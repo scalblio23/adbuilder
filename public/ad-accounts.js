@@ -54,7 +54,14 @@
   function load() {
     return request('GET', API).then(function (list) {
       accounts = Array.isArray(list) ? list : [];
-      if (!connected) { connected = true; setNotice('ok', 'Connected. Everyone who opens this site sees the same accounts.'); }
+      if (!connected) {
+        connected = true;
+        setNotice('ok', 'Connected. Everyone who opens this site sees the same accounts.');
+        fetch('/api/health', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (h) {
+          if (h && h.storage === 'postgres') setNotice('ok', 'Connected to the shared database. Everyone who opens this site sees the same accounts.');
+          else if (h && h.storage === 'file') setNotice('ok', 'Connected. Accounts are saved to a file on the server.');
+        }).catch(function () {});
+      }
       if (editingId && editingId !== 'new' && !accounts.some(function (a) { return a.id === editingId; })) editingId = null;
       render();
     }, function (err) {

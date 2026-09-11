@@ -51,7 +51,10 @@ function serveStatic(req, res) {
   });
 }
 
+var health = require('./api/health');
+
 http.createServer(function (req, res) {
+  if (req.url.split('?')[0] === '/api/health') return health(req, res);
   var match = /^\/api\/ad-accounts(?:\/([^/]+))?\/?$/.exec(req.url.split('?')[0]);
   if (match) {
     return readBody(req, function (body) {
