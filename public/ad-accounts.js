@@ -59,7 +59,8 @@
       render();
     }, function (err) {
       connected = false;
-      setNotice('error', 'Not connected to the server. Open the site through its server address, not as a local file. (' + err.message + ')');
+      if (/404/.test(err.message)) setNotice('error', 'The site is deployed without its API. On Vercel, make sure the api/ folder deployed and a Postgres database is attached. (' + err.message + ')');
+      else setNotice('error', 'Not connected to the server. Open the site through its server address, not as a local file. (' + err.message + ')');
       render();
     });
   }
