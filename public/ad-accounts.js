@@ -17,6 +17,9 @@
   var sortKey = null;     // 'number' | 'client' | 'company' | 'link' | null (original order)
   var sortDir = 'asc';
   var sortButtons = document.querySelectorAll('.sort');
+  var STATUS_FIELDS = ['leads', 'bookings', 'conversion', 'mood'];
+  var STATUS_LABELS = { green: 'Green', amber: 'Amber', red: 'Red' };
+  var STATUS_RANK = { green: 1, amber: 2, red: 3 };
 
   function setNotice(kind, text) {
     notice.className = 'notice' + (kind ? ' notice--' + kind : '');
@@ -42,6 +45,23 @@
   function textarea(name, value, placeholder) {
     var node = el('textarea', { 'class': 'table__input table__textarea', 'data-field': name, placeholder: placeholder, rows: '2' });
     node.value = value || '';
+    return node;
+  }
+  function statusPill(value) {
+    if (!STATUS_LABELS[value]) return el('span', { 'class': 'muted', text: '—' });
+    return el('span', { 'class': 'pill pill--' + value, text: STATUS_LABELS[value] });
+  }
+  function statusSelect(name, value) {
+    var node = el('select', { 'class': 'table__input table__select', 'data-field': name });
+    node.appendChild(el('option', { value: '', text: '—' }));
+    Object.keys(STATUS_LABELS).forEach(function (key) {
+      var opt = el('option', { value: key, text: STATUS_LABELS[key] });
+      if (key === value) opt.setAttribute('selected', 'selected');
+      node.appendChild(opt);
+    });
+    function tint() { node.className = 'table__input table__select' + (node.value ? ' is-' + node.value : ''); }
+    node.addEventListener('change', tint);
+    tint();
     return node;
   }
   function rulesText(rules) {
@@ -99,6 +119,10 @@
       el('td', { 'class': 'table__num', text: String(number) }),
       el('td', { text: account.client }),
       el('td', { text: account.company }),
+      el('td', {}, [statusPill(account.leads)]),
+      el('td', {}, [statusPill(account.bookings)]),
+      el('td', {}, [statusPill(account.conversion)]),
+      el('td', {}, [statusPill(account.mood)]),
       linkCell,
       el('td', {}, [rulesText(account.rules)]),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
@@ -117,12 +141,15 @@
     var companyInput = input('company', account.company, 'Company name');
     var linkInput = input('link', account.link, 'https://');
     var rulesInput = textarea('rules', account.rules, 'Rules or notes for this account');
+    var statusInputs = {};
+    STATUS_FIELDS.forEach(function (f) { statusInputs[f] = statusSelect(f, account[f]); });
 
     function commit() {
       var client = clientInput.value.trim();
       clientInput.classList.toggle('is-invalid', !client);
       if (!client) { clientInput.focus(); return; }
       var data = { client: client, company: companyInput.value.trim(), link: linkInput.value.trim(), rules: rulesInput.value.trim() };
+      STATUS_FIELDS.forEach(function (f) { data[f] = statusInputs[f].value; });
       var write = isNew ? request('POST', API, data) : request('PUT', API + '/' + account.id, data);
       editingId = null; draft = null;
       write.then(load, failed('save the account'));
@@ -133,6 +160,10 @@
       el('td', { 'class': 'table__num', text: String(number) }),
       el('td', {}, [clientInput]),
       el('td', {}, [companyInput]),
+      el('td', {}, [statusInputs.leads]),
+      el('td', {}, [statusInputs.bookings]),
+      el('td', {}, [statusInputs.conversion]),
+      el('td', {}, [statusInputs.mood]),
       el('td', {}, [linkInput]),
       el('td', {}, [rulesInput]),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
@@ -155,6 +186,13 @@
     var dir = sortDir === 'desc' ? -1 : 1;
     rows.sort(function (a, b) {
       if (sortKey === 'number') return (a.number - b.number) * dir;
+      if (STATUS_FIELDS.indexOf(sortKey) !== -1) {
+        var ra = STATUS_RANK[a.account[sortKey]] || 99, rb = STATUS_RANK[b.account[sortKey]] || 99;
+        if (ra === rb) return a.number - b.number;
+        if (ra === 99) return 1;
+        if (rb === 99) return -1;
+        return (ra - rb) * dir;
+      }
       var x = String(a.account[sortKey] || '').toLowerCase();
       var y = String(b.account[sortKey] || '').toLowerCase();
       if (x === y) return a.number - b.number;
