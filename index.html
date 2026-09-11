@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AdBuilder Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__brand">
+        <span class="sidebar__logo">A</span>
+        <span class="sidebar__title">AdBuilder</span>
+      </div>
+
+      <nav class="sidebar__nav">
+        <a href="#overview" class="nav-item is-active" data-section="overview">
+          <span class="nav-item__icon">&#9632;</span>
+          <span class="nav-item__label">Overview</span>
+        </a>
+        <a href="#campaigns" class="nav-item" data-section="campaigns">
+          <span class="nav-item__icon">&#9654;</span>
+          <span class="nav-item__label">Campaigns</span>
+        </a>
+        <a href="#creatives" class="nav-item" data-section="creatives">
+          <span class="nav-item__icon">&#9670;</span>
+          <span class="nav-item__label">Creatives</span>
+        </a>
+        <a href="#audiences" class="nav-item" data-section="audiences">
+          <span class="nav-item__icon">&#9679;</span>
+          <span class="nav-item__label">Audiences</span>
+        </a>
+        <a href="#settings" class="nav-item" data-section="settings">
+          <span class="nav-item__icon">&#9881;</span>
+          <span class="nav-item__label">Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar__footer">
+        <div class="user">
+          <span class="user__avatar">H</span>
+          <div class="user__meta">
+            <span class="user__name">Henry</span>
+            <span class="user__role">Admin</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="backdrop" id="backdrop"></div>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="topbar__toggle" id="sidebarToggle" aria-label="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
+          &#9776;
+        </button>
+        <h1 class="topbar__title" id="pageTitle">Overview</h1>
+        <div class="topbar__actions">
+          <input class="topbar__search" type="search" placeholder="Search…" aria-label="Search" />
+          <button class="btn btn--primary">New campaign</button>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="section is-visible" id="overview">
+          <div class="stats">
+            <div class="card stat">
+              <span class="stat__label">Impressions</span>
+              <span class="stat__value">1.24M</span>
+              <span class="stat__delta stat__delta--up">+8.2%</span>
+            </div>
+            <div class="card stat">
+              <span class="stat__label">Clicks</span>
+              <span class="stat__value">38.1K</span>
+              <span class="stat__delta stat__delta--up">+3.4%</span>
+            </div>
+            <div class="card stat">
+              <span class="stat__label">CTR</span>
+              <span class="stat__value">3.07%</span>
+              <span class="stat__delta stat__delta--down">-0.4%</span>
+            </div>
+            <div class="card stat">
+              <span class="stat__label">Spend</span>
+              <span class="stat__value">$12,480</span>
+              <span class="stat__delta">—</span>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="card">
+              <h2 class="card__title">Recent campaigns</h2>
+              <table class="table">
+                <thead>
+                  <tr><th>Name</th><th>Status</th><th>Budget</th><th>CTR</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Summer Sale</td><td><span class="badge badge--live">Live</span></td><td>$4,000</td><td>3.4%</td></tr>
+                  <tr><td>Retargeting Q3</td><td><span class="badge badge--live">Live</span></td><td>$2,500</td><td>2.9%</td></tr>
+                  <tr><td>Brand Awareness</td><td><span class="badge badge--paused">Paused</span></td><td>$6,000</td><td>1.8%</td></tr>
+                  <tr><td>Newsletter Push</td><td><span class="badge badge--draft">Draft</span></td><td>$800</td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="card">
+              <h2 class="card__title">Activity</h2>
+              <ul class="activity">
+                <li><span class="activity__time">2m</span> Creative "Hero v3" approved</li>
+                <li><span class="activity__time">1h</span> Summer Sale budget increased</li>
+                <li><span class="activity__time">3h</span> New audience "Cart abandoners" created</li>
+                <li><span class="activity__time">1d</span> Brand Awareness paused</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="campaigns">
+          <div class="card"><h2 class="card__title">Campaigns</h2><p class="muted">Campaign list goes here.</p></div>
+        </section>
+        <section class="section" id="creatives">
+          <div class="card"><h2 class="card__title">Creatives</h2><p class="muted">Creative assets go here.</p></div>
+        </section>
+        <section class="section" id="audiences">
+          <div class="card"><h2 class="card__title">Audiences</h2><p class="muted">Audience segments go here.</p></div>
+        </section>
+        <section class="section" id="settings">
+          <div class="card"><h2 class="card__title">Settings</h2><p class="muted">Account settings go here.</p></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
