@@ -307,7 +307,7 @@ a { color: inherit; text-decoration: none; }
   font: inherit;
 }
 .table__textarea { resize: vertical; min-height: 34px; line-height: 1.4; }
-.url-list { display: flex; flex-direction: column; gap: 2px; }
+.rules-text { white-space: pre-wrap; max-width: 36ch; }
 .table__input:focus { outline: none; border-color: var(--accent); }
 .table__input.is-invalid { border-color: var(--danger); }
 

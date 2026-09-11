@@ -44,12 +44,9 @@
     node.value = value || '';
     return node;
   }
-  function urlList(urls) {
-    var list = el('div', { 'class': 'url-list' });
-    var items = String(urls || '').split('\n').filter(Boolean);
-    if (!items.length) return el('span', { 'class': 'muted', text: '—' });
-    items.forEach(function (u) { list.appendChild(el('a', { 'class': 'link', href: u, target: '_blank', rel: 'noopener', text: u })); });
-    return list;
+  function rulesText(rules) {
+    if (!rules) return el('span', { 'class': 'muted', text: '—' });
+    return el('div', { 'class': 'rules-text', text: rules });
   }
 
   function request(method, url, data) {
@@ -103,7 +100,7 @@
       el('td', { text: account.client }),
       el('td', { text: account.company }),
       linkCell,
-      el('td', {}, [urlList(account.urls)]),
+      el('td', {}, [rulesText(account.rules)]),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
         button('Edit', '', function () { editingId = account.id; render(); }),
         button('Delete', 'btn--danger', function () {
@@ -119,13 +116,13 @@
     var clientInput = input('client', account.client, 'Client name');
     var companyInput = input('company', account.company, 'Company name');
     var linkInput = input('link', account.link, 'https://');
-    var urlsInput = textarea('urls', account.urls, 'One URL per line');
+    var rulesInput = textarea('rules', account.rules, 'Rules or notes for this account');
 
     function commit() {
       var client = clientInput.value.trim();
       clientInput.classList.toggle('is-invalid', !client);
       if (!client) { clientInput.focus(); return; }
-      var data = { client: client, company: companyInput.value.trim(), link: linkInput.value.trim(), urls: urlsInput.value.trim() };
+      var data = { client: client, company: companyInput.value.trim(), link: linkInput.value.trim(), rules: rulesInput.value.trim() };
       var write = isNew ? request('POST', API, data) : request('PUT', API + '/' + account.id, data);
       editingId = null; draft = null;
       write.then(load, failed('save the account'));
@@ -137,7 +134,7 @@
       el('td', {}, [clientInput]),
       el('td', {}, [companyInput]),
       el('td', {}, [linkInput]),
-      el('td', {}, [urlsInput]),
+      el('td', {}, [rulesInput]),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
         button('Save', 'btn--primary', commit),
         button('Cancel', '', cancel)
