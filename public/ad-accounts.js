@@ -13,7 +13,7 @@
 
   var TEXT_FIELDS = { client: 'Client name', company: 'Company name', link: 'https://', rules: 'Rules or notes' };
   var STATUS_FIELDS = ['leads', 'bookings', 'conversion', 'mood'];
-  var STATUS_LABELS = { green: 'Green', amber: 'Amber', red: 'Red' };
+  var STATUS_LABELS = { green: 'Good', amber: 'OK', red: 'Bad' };
   var STATUS_RANK = { green: 1, amber: 2, red: 3 };
 
   var accounts = [];
