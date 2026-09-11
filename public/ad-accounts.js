@@ -13,8 +13,8 @@
 
   var TEXT_FIELDS = { client: 'Client name', company: 'Company name', link: 'https://', rules: 'Rules or notes' };
   var STATUS_FIELDS = ['leads', 'bookings', 'conversion', 'mood'];
-  var STATUS_LABELS = { green: 'Good', amber: 'OK', red: 'Bad' };
-  var STATUS_RANK = { green: 1, amber: 2, red: 3 };
+  var STATUS_LABELS = { green: 'Good', amber: 'OK', red: 'Bad', notlive: 'Not Live' };
+  var STATUS_RANK = { green: 1, amber: 2, red: 3, notlive: 4 };
 
   var accounts = [];
   var editing = null;     // { id, field } for the cell being edited, or null

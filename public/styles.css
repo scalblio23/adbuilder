@@ -321,6 +321,7 @@ a { color: inherit; text-decoration: none; }
 .status--green { background: #00c875; }
 .status--amber { background: #fdab3d; }
 .status--red { background: #e2445c; }
+.status--notlive { background: var(--bg); color: var(--text-muted); }
 .status:hover { filter: brightness(1.08); }
 .status:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
 .table tbody tr:hover .cell-status { background: transparent; }
@@ -338,6 +339,7 @@ a { color: inherit; text-decoration: none; }
 }
 .status-menu__option:hover { filter: brightness(1.1); }
 .status-menu__option.is-current { outline: 2px solid #fff; outline-offset: -2px; }
+.status-menu__option.status--notlive { border: 1px solid var(--border); }
 .status-menu__option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .status-menu__clear { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); }
 .status-menu__clear:hover { color: var(--text); filter: none; background: var(--bg-hover); }
