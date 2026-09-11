@@ -14,6 +14,9 @@
   var editingId = null;   // id of the row being edited, or 'new'
   var draft = null;       // unsaved new row
   var connected = false;
+  var sortKey = null;     // 'number' | 'client' | 'company' | 'link' | null (original order)
+  var sortDir = 'asc';
+  var sortButtons = document.querySelectorAll('.sort');
 
   function setNotice(kind, text) {
     notice.className = 'notice' + (kind ? ' notice--' + kind : '');
@@ -133,15 +136,46 @@
     return row;
   }
 
+  function sorted() {
+    var rows = accounts.map(function (account, index) { return { account: account, number: index + 1 }; });
+    if (!sortKey) return rows;
+    var dir = sortDir === 'desc' ? -1 : 1;
+    rows.sort(function (a, b) {
+      if (sortKey === 'number') return (a.number - b.number) * dir;
+      var x = String(a.account[sortKey] || '').toLowerCase();
+      var y = String(b.account[sortKey] || '').toLowerCase();
+      if (x === y) return a.number - b.number;
+      if (!x) return 1;   // empty values always last
+      if (!y) return -1;
+      return x.localeCompare(y) * dir;
+    });
+    return rows;
+  }
+
   function render() {
     body.innerHTML = '';
-    accounts.forEach(function (account, index) {
-      body.appendChild(account.id === editingId ? editRow(account, index + 1) : viewRow(account, index + 1));
+    sorted().forEach(function (row) {
+      body.appendChild(row.account.id === editingId ? editRow(row.account, row.number) : viewRow(row.account, row.number));
     });
     if (draft) body.appendChild(editRow(draft, accounts.length + 1));
+    sortButtons.forEach(function (btn) {
+      var active = btn.dataset.sort === sortKey;
+      btn.classList.toggle('is-asc', active && sortDir === 'asc');
+      btn.classList.toggle('is-desc', active && sortDir === 'desc');
+    });
     empty.hidden = accounts.length > 0 || !!draft;
     addButton.disabled = !connected || editingId !== null;
   }
+
+  sortButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var key = btn.dataset.sort;
+      if (sortKey !== key) { sortKey = key; sortDir = 'asc'; }
+      else if (sortDir === 'asc') sortDir = 'desc';
+      else { sortKey = null; sortDir = 'asc'; }
+      render();
+    });
+  });
 
   addButton.addEventListener('click', function () {
     draft = { id: 'new', client: '', company: '', link: '' };

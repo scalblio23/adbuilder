@@ -156,7 +156,13 @@
             <div class="notice" id="accountsNotice"><span class="notice__dot"></span><span id="accountsNoticeText">Connecting to the server&hellip;</span></div>
             <table class="table table--editable">
               <thead>
-                <tr><th class="table__num">#</th><th>Client Name</th><th>Company Name</th><th>Ad Account Link</th><th class="table__actions-col"></th></tr>
+                <tr>
+                  <th class="table__num"><button type="button" class="sort" data-sort="number">#</button></th>
+                  <th><button type="button" class="sort" data-sort="client">Client Name</button></th>
+                  <th><button type="button" class="sort" data-sort="company">Company Name</button></th>
+                  <th><button type="button" class="sort" data-sort="link">Ad Account Link</button></th>
+                  <th class="table__actions-col"></th>
+                </tr>
               </thead>
               <tbody id="accountsBody"></tbody>
             </table>
