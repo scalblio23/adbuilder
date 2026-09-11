@@ -387,11 +387,15 @@
   }
 
   function reportError(err, action) {
-    var code = err && err.code;
-    if (code === 'quota_exceeded') setNotice('error', 'Storage is full. Delete some accounts before adding more.');
-    else if (code === 'resource_exhausted') setNotice('error', 'Too many changes at once. Wait a moment and try again.');
-    else if (code === 'revoked') setNotice('error', 'Access to shared storage was removed. Reload the page to continue.');
-    else setNotice('error', 'Could not ' + action + '. Check your connection and try again.');
+    var code = (err && err.code) || 'unknown';
+    var text;
+    if (code === 'quota_exceeded') text = 'Storage is full. Delete some accounts before adding more.';
+    else if (code === 'resource_exhausted') text = 'Too many changes at once. Wait a moment and try again.';
+    else if (code === 'revoked') text = 'Access to shared storage was removed. Reload the page to continue.';
+    else if (code === 'not_granted') text = 'Shared storage was not allowed for this page. Reload and choose Allow when asked.';
+    else if (code === 'capability_disabled' || code === 'capability_removed') text = 'Shared storage is not enabled for this view.';
+    else text = 'Could not ' + action + '. Reload the page and try again.';
+    setNotice('error', text + ' (status: ' + code + ')');
   }
 
   function viewRow(account) {
@@ -469,31 +473,44 @@
 
   render();
 
+  function subscribe(db) {
+    store = db.collection('adAccounts');
+    store.orderBy('createdAt', 'asc').onSnapshot(function (snap) {
+      accounts = snap.docs.map(function (doc) {
+        var data = doc.data() || {};
+        return { id: doc.id, client: String(data.client || ''), company: String(data.company || ''), link: String(data.link || ''), createdAt: data.createdAt };
+      });
+      if (editingId && editingId !== 'new' && !accounts.some(function (a) { return a.id === editingId; })) editingId = null;
+      setNotice('ok', snap.metadata.fromCache ? 'Syncing shared accounts…' : 'Shared with everyone who can open this page. Changes save automatically.');
+      render();
+    }, function (err) {
+      store = null;
+      reportError(err, 'load shared accounts');
+      render();
+    });
+    render();
+  }
+
   function connect() {
     if (!window.claude || typeof window.claude.use !== 'function') {
-      setNotice('', 'Shared storage is only available on the hosted page. Open this dashboard from its claude.ai link to add accounts.');
+      setNotice('', 'Shared storage only works on the hosted page. Open this dashboard from its claude.ai link. (status: no-runtime)');
       return;
     }
-    window.claude.use('db').then(function (db) {
+    Promise.all([window.claude.use('db'), window.claude.use('permissions')]).then(function (results) {
+      var db = results[0];
+      var permissions = results[1];
       if (!db) {
-        setNotice('', 'Shared storage is not available in this view, so accounts cannot be edited here.');
+        setNotice('', 'Shared storage is not available in this view. Open the dashboard from its claude.ai link while signed in. (status: db-unavailable)');
         return;
       }
-      store = db.collection('adAccounts');
-      store.orderBy('createdAt', 'asc').onSnapshot(function (snap) {
-        accounts = snap.docs.map(function (doc) {
-          var data = doc.data() || {};
-          return { id: doc.id, client: String(data.client || ''), company: String(data.company || ''), link: String(data.link || ''), createdAt: data.createdAt };
-        });
-        if (editingId && editingId !== 'new' && !accounts.some(function (a) { return a.id === editingId; })) editingId = null;
-        setNotice('ok', snap.metadata.fromCache ? 'Syncing shared accounts…' : 'Shared with everyone who can open this page. Changes save automatically.');
-        render();
-      }, function (err) {
-        store = null;
-        reportError(err, 'load shared accounts');
-        render();
-      });
-      render();
+      if (!permissions) return subscribe(db);
+      permissions.request(['db']).then(function (states) {
+        var state = states && states.db;
+        if (state === 'granted' || state === undefined) return subscribe(db);
+        if (state === 'denied') setNotice('error', 'Shared storage was declined. Reload the page and choose Allow when asked. (status: denied)');
+        else if (state === 'prompt') setNotice('', 'Waiting for you to allow shared storage. (status: prompt)');
+        else setNotice('error', 'Shared storage is not available for this page in this view. (status: ' + state + ')');
+      }, function () { subscribe(db); });
     });
   }
   connect();
