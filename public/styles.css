@@ -275,6 +275,16 @@ a { color: inherit; text-decoration: none; }
 .notice--error .notice__dot { background: var(--danger); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
+/* Scrolling table with a header that stays put */
+.table-wrap { overflow-x: auto; }
+.table-wrap--sticky { overflow: auto; max-height: calc(100vh - 270px); min-height: 200px; }
+.table-wrap--sticky thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--bg-card);
+  box-shadow: inset 0 -1px 0 var(--border);   /* border-collapse drops the border on sticky cells */
+}
+.table-wrap--sticky .table th { border-bottom: none; }
+
 /* Editable table */
 .table__actions-col { width: 1%; }
 
