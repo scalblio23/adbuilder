@@ -79,11 +79,12 @@
     };
   }
 
-  function viewRow(account) {
+  function viewRow(account, number) {
     var linkCell = el('td');
     if (account.link) linkCell.appendChild(el('a', { 'class': 'link', href: account.link, target: '_blank', rel: 'noopener', text: account.link }));
     else linkCell.appendChild(el('span', { 'class': 'muted', text: '—' }));
     return el('tr', {}, [
+      el('td', { 'class': 'table__num', text: String(number) }),
       el('td', { text: account.client }),
       el('td', { text: account.company }),
       linkCell,
@@ -97,7 +98,7 @@
     ]);
   }
 
-  function editRow(account) {
+  function editRow(account, number) {
     var isNew = account.id === 'new';
     var clientInput = input('client', account.client, 'Client name');
     var companyInput = input('company', account.company, 'Company name');
@@ -115,6 +116,7 @@
     function cancel() { editingId = null; draft = null; render(); }
 
     var row = el('tr', { 'class': 'is-editing' }, [
+      el('td', { 'class': 'table__num', text: String(number) }),
       el('td', {}, [clientInput]),
       el('td', {}, [companyInput]),
       el('td', {}, [linkInput]),
@@ -133,10 +135,10 @@
 
   function render() {
     body.innerHTML = '';
-    accounts.forEach(function (account) {
-      body.appendChild(account.id === editingId ? editRow(account) : viewRow(account));
+    accounts.forEach(function (account, index) {
+      body.appendChild(account.id === editingId ? editRow(account, index + 1) : viewRow(account, index + 1));
     });
-    if (draft) body.appendChild(editRow(draft));
+    if (draft) body.appendChild(editRow(draft, accounts.length + 1));
     empty.hidden = accounts.length > 0 || !!draft;
     addButton.disabled = !connected || editingId !== null;
   }
