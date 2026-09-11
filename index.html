@@ -149,17 +149,17 @@
         </section>
         <section class="section" id="ad-accounts">
           <div class="card">
-            <h2 class="card__title">Ad Accounts</h2>
-            <table class="table">
+            <div class="card__header">
+              <h2 class="card__title">Ad Accounts</h2>
+              <button class="btn btn--primary" id="addAccount">Add account</button>
+            </div>
+            <table class="table table--editable">
               <thead>
-                <tr><th>Client Name</th><th>Company Name</th><th>Ad Account Link</th></tr>
+                <tr><th>Client Name</th><th>Company Name</th><th>Ad Account Link</th><th class="table__actions-col"></th></tr>
               </thead>
-              <tbody>
-                <tr><td>Jane Doe</td><td>Acme Corp</td><td><a class="link" href="https://business.facebook.com/adsmanager/manage/campaigns?act=1000000000001" target="_blank" rel="noopener">Open ad account</a></td></tr>
-                <tr><td>Sam Lee</td><td>Northwind Traders</td><td><a class="link" href="https://business.facebook.com/adsmanager/manage/campaigns?act=1000000000002" target="_blank" rel="noopener">Open ad account</a></td></tr>
-                <tr><td>Priya Patel</td><td>Globex Inc</td><td><a class="link" href="https://business.facebook.com/adsmanager/manage/campaigns?act=1000000000003" target="_blank" rel="noopener">Open ad account</a></td></tr>
-              </tbody>
+              <tbody id="accountsBody"></tbody>
             </table>
+            <p class="muted" id="accountsEmpty" hidden>No ad accounts yet. Click "Add account" to create one.</p>
           </div>
         </section>
         <section class="section" id="settings">
@@ -170,5 +170,6 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="ad-accounts.js"></script>
 </body>
 </html>

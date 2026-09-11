@@ -206,6 +206,15 @@ a { color: inherit; text-decoration: none; }
 
 .card__title { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
 
+.card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.card__header .card__title { margin: 0; }
+
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -253,6 +262,32 @@ a { color: inherit; text-decoration: none; }
 
 .link { color: var(--accent); }
 .link:hover { text-decoration: underline; }
+.table .link { word-break: break-all; }
+
+/* Editable table */
+.table__actions-col { width: 1%; }
+.table__actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+
+.btn--small { padding: 4px 10px; font-size: 12px; }
+.btn--danger { color: var(--danger); }
+.btn--danger:hover { background: rgba(229, 83, 75, 0.15); border-color: var(--danger); }
+.btn:hover { background: var(--bg-hover); }
+.btn--primary:hover { background: var(--accent); }
+
+.table__input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.table__input:focus { outline: none; border-color: var(--accent); }
+.table__input.is-invalid { border-color: var(--danger); }
+
+.table--editable td { vertical-align: middle; }
+.table--editable tbody tr.is-editing:hover { background: transparent; }
 .card > .muted + .table { margin-top: 16px; }
 
 /* Responsive */

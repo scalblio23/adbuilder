@@ -17,3 +17,4 @@ Then visit http://localhost:8080.
 - `index.html` – page structure (sidebar, top bar, content sections)
 - `styles.css` – dark grey theme and layout
 - `app.js` – sidebar collapse and section navigation
+- `ad-accounts.js` – editable Ad Accounts table (add, edit, delete), saved in the browser's local storage
