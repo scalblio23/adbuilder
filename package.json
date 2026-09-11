@@ -1,0 +1,13 @@
+{
+  "name": "adbuilder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dark grey ad dashboard with a shared, editable Ad Accounts table",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
