@@ -68,10 +68,14 @@
   }
 
   var loadSeq = 0;
+  var lastJson = '';
   function load() {
     var seq = ++loadSeq;
     return request('GET', API).then(function (list) {
       if (seq !== loadSeq) return;   // an older response arriving late; a newer one is on its way
+      var json = JSON.stringify(list);
+      var changed = json !== lastJson;
+      lastJson = json;
       accounts = Array.isArray(list) ? list : [];
       if (!connected) {
         connected = true;
@@ -82,7 +86,7 @@
         }).catch(function () {});
       }
       if (editing && !accounts.some(function (a) { return a.id === editing.id; })) editing = null;
-      render();
+      if (changed && !menu) render();
     }, function (err) {
       connected = false;
       if (/404/.test(err.message)) setNotice('error', 'The site is deployed without its API. On Vercel, make sure the api/ folder deployed and a Postgres database is attached. (' + err.message + ')');
@@ -117,20 +121,74 @@
   }
 
   // ---- Cells ----
-  function statusCell(account, field) {
-    var value = account[field] || '';
-    var select = el('select', { 'class': 'status status--' + (value || 'none'), 'data-field': field, title: 'Click to change', 'aria-label': field });
-    select.appendChild(el('option', { value: '', text: '—' }));
+  // ---- Status cells: a solid colour block; click opens a colour picker ----
+  var menu = null;        // the open picker, if any
+  function closeMenu() {
+    if (!menu) return;
+    menu.remove();
+    menu = null;
+    document.removeEventListener('mousedown', onOutside, true);
+    document.removeEventListener('keydown', onMenuKey, true);
+    window.removeEventListener('scroll', closeMenu, true);
+    window.removeEventListener('resize', closeMenu);
+  }
+  function onOutside(event) { if (menu && !menu.contains(event.target)) closeMenu(); }
+  function onMenuKey(event) { if (event.key === 'Escape') closeMenu(); }
+
+  function paintStatus(block, value) {
+    block.className = 'status status--' + (value || 'none');
+    block.textContent = STATUS_LABELS[value] || '';
+  }
+
+  function openMenu(block, account, field) {
+    closeMenu();
+    menu = el('div', { 'class': 'status-menu', role: 'listbox' });
+    var current = account[field] || '';
     Object.keys(STATUS_LABELS).forEach(function (key) {
-      var opt = el('option', { value: key, text: STATUS_LABELS[key] });
-      if (key === value) opt.setAttribute('selected', 'selected');
-      select.appendChild(opt);
+      var opt = el('button', { type: 'button', 'class': 'status-menu__option status--' + key + (key === current ? ' is-current' : ''), text: STATUS_LABELS[key], role: 'option' });
+      opt.addEventListener('click', function () { choose(key); });
+      menu.appendChild(opt);
     });
-    select.addEventListener('change', function () {
-      if (account.id === 'new') { account[field] = select.value; select.className = 'status status--' + (select.value || 'none'); return; }
-      saveField(account, field, select.value);
-    });
-    return el('td', { 'class': 'cell-status' }, [select]);
+    var clear = el('button', { type: 'button', 'class': 'status-menu__option status-menu__clear', text: 'Clear', role: 'option' });
+    clear.addEventListener('click', function () { choose(''); });
+    menu.appendChild(clear);
+
+    function choose(value) {
+      closeMenu();
+      if ((account[field] || '') === value) return;
+      var previous = account[field] || '';
+      account[field] = value;
+      paintStatus(block, value);           // instant, no table rebuild
+      if (account.id === 'new') return;    // draft rows save with the row
+      var change = {}; change[field] = value;
+      request('PUT', API + '/' + account.id, change).then(function () { load(); }, function (err) {
+        account[field] = previous;
+        paintStatus(block, previous);
+        setNotice('error', 'Could not save the change: ' + err.message);
+      });
+    }
+
+    document.body.appendChild(menu);
+    var r = block.getBoundingClientRect();
+    var mw = menu.offsetWidth, mh = menu.offsetHeight;
+    var left = Math.min(r.left, window.innerWidth - mw - 8);
+    var top = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) top = r.top - mh - 4;
+    menu.style.left = Math.max(8, left + window.scrollX) + 'px';
+    menu.style.top = (top + window.scrollY) + 'px';
+    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('keydown', onMenuKey, true);
+    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('resize', closeMenu);
+    var first = menu.querySelector('.is-current') || menu.firstChild;
+    first.focus();
+  }
+
+  function statusCell(account, field) {
+    var block = el('button', { type: 'button', 'data-field': field, title: 'Click to change', 'aria-label': field + ' status' });
+    paintStatus(block, account[field] || '');
+    block.addEventListener('click', function (event) { event.stopPropagation(); openMenu(block, account, field); });
+    return el('td', { 'class': 'cell-status' }, [block]);
   }
 
   function textCell(account, field) {
@@ -287,5 +345,5 @@
   render();
   load();
   // Pick up other people's changes; pause while something is being edited.
-  setInterval(function () { if (!editing && !draft && !document.hidden) load(); }, POLL_MS);
+  setInterval(function () { if (!editing && !draft && !menu && !document.hidden) load(); }, POLL_MS);
 })();

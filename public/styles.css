@@ -309,23 +309,38 @@ a { color: inherit; text-decoration: none; }
 .table__textarea { resize: vertical; min-height: 34px; line-height: 1.4; }
 .rules-text { white-space: pre-wrap; max-width: 36ch; }
 
-/* Traffic-light status blocks: the colour fills the entire cell, edge to edge */
-.cell-status { position: relative; padding: 0; min-width: 110px; }
+/* Status blocks: the colour fills the entire cell, edge to edge */
+.cell-status { position: relative; padding: 0; min-width: 120px; }
 .status {
   position: absolute; inset: 0; width: 100%; height: 100%;
   margin: 0; padding: 0 8px; border: none; border-radius: 0; cursor: pointer;
-  -webkit-appearance: none; appearance: none;
-  font: inherit; font-weight: 500; text-align: center; text-align-last: center;
-  color: #fff;
+  font: inherit; font-weight: 500; text-align: center; color: #fff;
+  transition: filter 0.1s;
 }
-.status option { background: var(--bg-card); color: var(--text); font-weight: 400; }
-.status--none { background: var(--bg-hover); color: var(--text-muted); }
-.status--green { background: #2e9e5b; }
-.status--amber { background: #e0a52b; }
-.status--red { background: #d9473e; }
+.status--none { background: #3a3b40; }
+.status--green { background: #00c875; }
+.status--amber { background: #fdab3d; }
+.status--red { background: #e2445c; }
 .status:hover { filter: brightness(1.08); }
 .status:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
 .table tbody tr:hover .cell-status { background: transparent; }
+
+/* Colour picker that opens under a status block */
+.status-menu {
+  position: absolute; z-index: 50; min-width: 160px;
+  display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.status-menu__option {
+  display: block; width: 100%; padding: 8px 12px; border: none; border-radius: 4px;
+  font: inherit; font-weight: 500; color: #fff; cursor: pointer; text-align: center;
+}
+.status-menu__option:hover { filter: brightness(1.1); }
+.status-menu__option.is-current { outline: 2px solid #fff; outline-offset: -2px; }
+.status-menu__option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.status-menu__clear { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); }
+.status-menu__clear:hover { color: var(--text); filter: none; background: var(--bg-hover); }
 
 /* Click-to-edit cells */
 .cell-editable { cursor: text; }
