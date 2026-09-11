@@ -39,6 +39,18 @@
   function input(name, value, placeholder) {
     return el('input', { 'class': 'table__input', 'data-field': name, value: value || '', placeholder: placeholder, type: name === 'link' ? 'url' : 'text' });
   }
+  function textarea(name, value, placeholder) {
+    var node = el('textarea', { 'class': 'table__input table__textarea', 'data-field': name, placeholder: placeholder, rows: '2' });
+    node.value = value || '';
+    return node;
+  }
+  function urlList(urls) {
+    var list = el('div', { 'class': 'url-list' });
+    var items = String(urls || '').split('\n').filter(Boolean);
+    if (!items.length) return el('span', { 'class': 'muted', text: '—' });
+    items.forEach(function (u) { list.appendChild(el('a', { 'class': 'link', href: u, target: '_blank', rel: 'noopener', text: u })); });
+    return list;
+  }
 
   function request(method, url, data) {
     return fetch(url, {
@@ -91,6 +103,7 @@
       el('td', { text: account.client }),
       el('td', { text: account.company }),
       linkCell,
+      el('td', {}, [urlList(account.urls)]),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
         button('Edit', '', function () { editingId = account.id; render(); }),
         button('Delete', 'btn--danger', function () {
@@ -106,12 +119,13 @@
     var clientInput = input('client', account.client, 'Client name');
     var companyInput = input('company', account.company, 'Company name');
     var linkInput = input('link', account.link, 'https://');
+    var urlsInput = textarea('urls', account.urls, 'One URL per line');
 
     function commit() {
       var client = clientInput.value.trim();
       clientInput.classList.toggle('is-invalid', !client);
       if (!client) { clientInput.focus(); return; }
-      var data = { client: client, company: companyInput.value.trim(), link: linkInput.value.trim() };
+      var data = { client: client, company: companyInput.value.trim(), link: linkInput.value.trim(), urls: urlsInput.value.trim() };
       var write = isNew ? request('POST', API, data) : request('PUT', API + '/' + account.id, data);
       editingId = null; draft = null;
       write.then(load, failed('save the account'));
@@ -123,13 +137,15 @@
       el('td', {}, [clientInput]),
       el('td', {}, [companyInput]),
       el('td', {}, [linkInput]),
+      el('td', {}, [urlsInput]),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
         button('Save', 'btn--primary', commit),
         button('Cancel', '', cancel)
       ])])
     ]);
     row.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter') { event.preventDefault(); commit(); }
+      var inTextarea = event.target && event.target.tagName === 'TEXTAREA';
+      if (event.key === 'Enter' && (!inTextarea || event.ctrlKey || event.metaKey)) { event.preventDefault(); commit(); }
       if (event.key === 'Escape') { event.preventDefault(); cancel(); }
     });
     setTimeout(function () { clientInput.focus(); }, 0);
