@@ -49,10 +49,25 @@ autosave to the server and are shared with the team.
 
 ## Creative Swipe File
 
-The Swipe File tab is a gallery of Meta Ad Library creatives that Hermes collects. Hermes
-extracts each ad with Chromium, uploads the media with `POST /api/v1/creatives` (base64, up to
-3.5 MB; the reply carries a permanent `url` and a `hash`, and identical bytes return the existing
-record), then upserts the metadata with `PUT /api/v1/swipes`:
+The Swipe File tab is a gallery of Meta Ad Library creatives that Hermes collects. The simplest
+way in is one call per ad, `POST /api/creatives/import` (also at `/api/v1/creatives/import`),
+key-protected, as `multipart/form-data`:
+
+```sh
+curl -H "Authorization: Bearer $ADBUILDER_API_KEY" \
+  -F "media=@ad.mp4;type=video/mp4" -F "thumbnail=@ad.jpg;type=image/jpeg" \
+  -F 'metadata={"libraryId":"1234567890123","advertiser":"Nike","copy":"…","headline":"…","cta":"Shop now","landingUrl":"https://…","ranking":4,"startedAt":"2026-08-01","active":true}' \
+  https://your-site/api/creatives/import
+```
+
+It stores the media (deduped by SHA-256), the optional thumbnail, and the metadata, and returns
+`{ record, url, thumbnailUrl, media: {id, hash, duplicate}, dedupe }`. A JSON body works too:
+`{ media: {name, mime, data: base64} | {url}, thumbnail: {…}, metadata: {…} }`. Media over
+3.5 MB must be passed as `metadata.mediaUrl` instead of uploaded.
+
+The two-step alternative: upload with `POST /api/v1/creatives` (base64; the reply carries a
+permanent `url` and a `hash`, and identical bytes return the existing record), then upsert the
+metadata with `PUT /api/v1/swipes`:
 
 ```json
 { "items": [ { "libraryId": "1234567890123", "advertiser": "Nike", "mediaType": "image",

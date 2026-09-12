@@ -86,6 +86,10 @@ var ROUTES = [
 http.createServer(function (req, res) {
   var pathname = req.url.split('?')[0];
   if (pathname === '/api/health') return health(req, res);
+  if (/^\/api\/(v1\/)?creatives\/import\/?$/.test(pathname)) {
+    if (/multipart\/form-data/i.test(String(req.headers['content-type'] || ''))) return api.inbound.importCreative(req, res, null, undefined);
+    return readBody(req, function (body) { api.inbound.importCreative(req, res, null, body); });
+  }
   for (var i = 0; i < ROUTES.length; i++) {
     var match = ROUTES[i][0].exec(pathname);
     if (match) {

@@ -131,5 +131,6 @@
   [search, typeSel, activeSel, advSel].forEach(function (c) { c.addEventListener('input', render); c.addEventListener('change', render); });
   refresh.addEventListener('click', load);
   load();
-  setInterval(function () { if (location.hash === '#creatives' && !document.hidden) load(); }, 30000);
+  setInterval(function () { if (location.hash === '#creatives' && !document.hidden) load(); }, 8000);
+  window.addEventListener('hashchange', function () { if (location.hash === '#creatives') load(); });
 })();
