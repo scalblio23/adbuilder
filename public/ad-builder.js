@@ -218,18 +218,36 @@
     var at = meta[kind].syncedAt;
     return at ? 'Synced from Hermes ' + new Date(at).toLocaleString() : 'Not synced yet. Hermes sends this list with its access token.';
   }
+  // Re-read what Hermes has sent (and pull from Hermes too, if the Advanced connection is set up),
+  // then redraw the dropdowns in place. Resolves with a one-line summary.
+  function fetchMeta() {
+    return fetch('/api/hermes/meta', { method: 'POST' }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }, function () { return { ok: false, status: 0, body: {} }; })
+      .then(function (pull) {
+        return Promise.all([
+          request('GET', '/api/meta'),
+          request('GET', '/api/ad-accounts').then(function (l) { accounts = l || []; }, function () {})
+        ]).then(function (r) {
+          meta = r[0] || meta;
+          if (camp) {
+            var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5());
+            var s9 = root.querySelector('#step-9'); if (s9) s9.replaceWith(step9());
+          }
+          var n = function (k) { return meta[k].items.length; };
+          var when = [meta.adAccounts.syncedAt, meta.pixels.syncedAt, meta.pages.syncedAt].filter(Boolean).sort().pop();
+          var summary = n('adAccounts') + ' ad account' + (n('adAccounts') === 1 ? '' : 's') + ', ' + n('pixels') + ' pixel' + (n('pixels') === 1 ? '' : 's') + ', ' + n('pages') + ' page' + (n('pages') === 1 ? '' : 's');
+          if (pull.ok) return 'Pulled from Hermes: ' + summary + '.';
+          if (!when) return 'Nothing from Hermes yet. Ask Hermes to send the Meta data, then fetch again.';
+          return 'Fetched: ' + summary + ' (Hermes sent this ' + new Date(when).toLocaleString() + ').';
+        });
+      });
+  }
   var refreshMsg = '';
-  function refreshButton(afterRefresh) {
+  function refreshButton() {
     var out = h('span', { 'class': 'field__hint', text: refreshMsg });
     refreshMsg = '';
-    var b = smallBtn('Refresh from Hermes', '', function () {
-      b.disabled = true; out.textContent = 'Asking Hermes…';
-      fetch('/api/hermes/meta', { method: 'POST' }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
-        .then(function (r) {
-          if (!r.ok) { out.textContent = r.body.error || 'Refresh failed.'; return; }
-          return request('GET', '/api/meta').then(function (m) { meta = m; refreshMsg = 'Updated ' + new Date().toLocaleTimeString() + '.'; afterRefresh(); });
-        }, function (err) { out.textContent = 'Refresh failed: ' + err.message; })
-        .then(function () { b.disabled = false; });
+    var b = smallBtn('Fetch from Hermes', '', function () {
+      b.disabled = true; out.textContent = 'Fetching…';
+      fetchMeta().then(function (msg) { refreshMsg = msg; var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5()); }, function (err) { out.textContent = 'Fetch failed: ' + err.message; b.disabled = false; });
     });
     return h('div', { 'class': 'btn-row' }, [b, out]);
   }
@@ -270,7 +288,7 @@
     return step(5, 'Account selection', 'Which ad account and Facebook Page this campaign runs from.', [
       field('Ad account', sel, meta.adAccounts.items.length ? syncedLabel('adAccounts') : 'No Meta accounts synced yet. ' + (accounts.length ? 'Showing the Ad Accounts tab.' : 'Add accounts in the Ad Accounts tab or sync from Hermes.')),
       field('Facebook Page', pageSel, meta.pages.items.length ? syncedLabel('pages') : 'No pages synced yet. Hermes sends the pages the Meta token can access.'),
-      refreshButton(function () { var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5()); })
+      refreshButton()
     ]);
   }
 
@@ -643,6 +661,12 @@
     var keyBox = h('div', { 'class': 'apikey' });
     var keyOut = h('div', {});
     var seen = h('div', { 'class': 'notice' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Checking…' }), smallBtn('Check again', '', function () { loadSeen(); })]);
+    var fetchOut = h('span', { 'class': 'field__hint' });
+    var fetchBtn = btn('Fetch from Hermes', 'btn--primary', function () {
+      fetchBtn.disabled = true; fetchOut.textContent = 'Fetching…';
+      fetchMeta().then(function (msg) { fetchOut.textContent = msg; }, function (err) { fetchOut.textContent = 'Fetch failed: ' + err.message; }).then(function () { fetchBtn.disabled = false; });
+    });
+    var fetchRow = h('div', { 'class': 'btn-row', style: 'margin: 12px 0 16px' }, [fetchBtn, fetchOut]);
     function showSeen() {
       var ok = !!keyState.lastSeenAt;
       seen.className = 'notice' + (ok ? ' notice--ok' : '');
@@ -702,7 +726,9 @@
 
     return h('div', { 'class': 'card step hermes', id: 'hermesCard' }, [
       h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: 'H' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Hermes access token' }), h('div', { 'class': 'step__sub', text: 'Generate a token, paste it into Hermes. Hermes then pulls campaigns, prompts, and assets from here and reports launch status back.' })])]),
-      keyBox, keyOut, seen, endpoints,
+      keyBox, keyOut, seen,
+      h('p', { 'class': 'muted', text: 'After Hermes sends ad accounts, pixels, and pages, fetch them here. The dropdowns in steps 5 and 9 update without reloading the page.', style: 'margin: 16px 0 0' }),
+      fetchRow, endpoints,
       advanced
     ]);
   }
