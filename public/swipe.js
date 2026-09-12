@@ -41,6 +41,14 @@
     applyCollapsed();
   });
 
+  function deleteMany(list, what) {
+    if (!list.length) { setNotice('', 'Nothing to delete.'); return; }
+    if (!confirm('Delete ' + list.length + ' creative' + (list.length === 1 ? '' : 's') + ' ' + what + '? This cannot be undone.')) return;
+    request('DELETE', '/api/swipes', { ids: list.map(function (i) { return i.id; }) })
+      .then(function (r) { flash = 'Deleted ' + r.removed + '.'; return load(); }, function (err) { setNotice('error', 'Could not delete: ' + err.message); });
+  }
+  document.getElementById('swipeDeleteShown').addEventListener('click', function () { deleteMany(visible(), 'shown with these filters'); });
+
   // Per-advertiser groups in rows view; remembered per advertiser.
   var closedGroups = {};
   try { closedGroups = JSON.parse(localStorage.getItem('adbuilder.swipeGroups') || '{}') || {}; } catch (e) {}
@@ -48,6 +56,8 @@
 
   var items = [];
   var loaded = false;
+  var flash = '';   // one-off note shown in front of the next summary, e.g. "Deleted 3."
+
 
   function setNotice(kind, text) { notice.className = 'notice' + (kind ? ' notice--' + kind : ''); noticeText.textContent = text; }
   function el(tag, attrs, children) {
@@ -77,7 +87,8 @@
       Object.keys(advertisers).sort().forEach(function (a) { advSel.appendChild(el('option', { value: a, text: a })); });
       advSel.value = current;
       var active = items.filter(function (i) { return i.active; }).length;
-      setNotice('ok', items.length + ' creative' + (items.length === 1 ? '' : 's') + ' saved, ' + active + ' active. Hermes adds new ones through the API.');
+      setNotice('ok', (flash ? flash + ' ' : '') + items.length + ' creative' + (items.length === 1 ? '' : 's') + ' saved, ' + active + ' active. Hermes adds new ones through the API.');
+      flash = '';
       render();
     }, function (err) { setNotice('error', 'Could not load the swipe file: ' + err.message); });
   }
@@ -215,7 +226,8 @@
       el('span', { 'class': 'swipe-group__name', text: name }),
       el('span', { 'class': 'swipe-group__count', text: members.length + (members.length === 1 ? ' creative' : ' creatives') + ', ' + active + ' active' })
     ]);
-    return el('div', { 'class': 'swipe-group' }, [head, body]);
+    var del = el('button', { type: 'button', 'class': 'btn btn--small btn--danger swipe-group__delete', text: 'Delete all', title: 'Delete every creative from ' + name, onclick: function () { deleteMany(members, 'from ' + name); } });
+    return el('div', { 'class': 'swipe-group' }, [el('div', { 'class': 'swipe-group__bar' }, [head, del]), body]);
   }
 
   function render() {

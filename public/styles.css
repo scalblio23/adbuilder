@@ -568,3 +568,6 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .swipe-group__body .swipe-row { border-color: transparent; }
 .swipe__advertiser { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .swipe__time { font-size: 12px; font-weight: 400; color: var(--text-muted); white-space: nowrap; }
+.swipe-group__bar { display: flex; align-items: center; background: var(--bg-card); }
+.swipe-group__bar .swipe-group__head { flex: 1; }
+.swipe-group__delete { margin-right: 8px; flex-shrink: 0; }
