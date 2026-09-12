@@ -100,6 +100,12 @@
     });
   }
 
+  function savedAt(item) {
+    var t = item.firstSeenAt || item.createdAt;
+    if (!t) return null;
+    var d = new Date(t);
+    return el('span', { 'class': 'swipe__time', text: d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), title: 'Saved ' + d.toLocaleString() });
+  }
   function mediaFor(item) {
     var box = el('div', { 'class': 'swipe__media' });
     if (item.mediaType === 'video' && item.mediaUrl) {
@@ -131,7 +137,7 @@
     return el('div', { 'class': 'swipe' + (item.active ? '' : ' is-inactive') }, [
       mediaFor(item),
       el('div', { 'class': 'swipe__body' }, [
-        el('div', { 'class': 'swipe__advertiser', text: item.advertiser || 'Unknown advertiser' }),
+        el('div', { 'class': 'swipe__advertiser' }, [el('span', { text: item.advertiser || 'Unknown advertiser' }), savedAt(item)]),
         item.headline ? el('div', { 'class': 'swipe__headline', text: item.headline }) : null,
         item.copy ? copy : null,
         el('div', { 'class': 'swipe__meta' }, [
@@ -176,7 +182,7 @@
     var line = el('div', { 'class': 'swipe-row__line', onclick: function (e) { if (e.target.closest('button, a')) return; expanded = !expanded; detail.hidden = !expanded; wrap.classList.toggle('is-open', expanded); } }, [
       thumb,
       el('div', { 'class': 'swipe-row__text' }, [
-        el('div', { 'class': 'swipe__advertiser', text: item.advertiser || 'Unknown advertiser' }),
+        el('div', { 'class': 'swipe__advertiser' }, [el('span', { text: item.advertiser || 'Unknown advertiser' }), savedAt(item)]),
         el('div', { 'class': 'swipe-row__sub', text: item.headline || (item.copy || '').split('\n')[0] || '' })
       ]),
       el('span', { 'class': 'swipe__type swipe-row__type', text: item.mediaType || 'image' }),

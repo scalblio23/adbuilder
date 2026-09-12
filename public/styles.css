@@ -566,3 +566,5 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .swipe-group__count { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-muted); }
 .swipe-group__body { display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--bg); }
 .swipe-group__body .swipe-row { border-color: transparent; }
+.swipe__advertiser { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.swipe__time { font-size: 12px; font-weight: 400; color: var(--text-muted); white-space: nowrap; }
