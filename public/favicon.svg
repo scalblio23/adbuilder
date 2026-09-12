@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="230" fill="#222222"/>
+  <g fill="#3B82F6" stroke="#3B82F6" stroke-width="30" stroke-linejoin="round" paint-order="stroke">
+    <!-- chevron: the A's legs -->
+    <polygon points="512,190 788,575 656,575 512,338 368,575 236,575"/>
+    <!-- middle bar -->
+    <polygon points="426,535 598,535 655,655 369,655"/>
+    <!-- bottom bar -->
+    <polygon points="292,690 732,690 812,820 212,820"/>
+  </g>
+</svg>
