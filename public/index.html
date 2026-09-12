@@ -19,6 +19,10 @@
           <span class="nav-item__icon">&#9632;</span>
           <span class="nav-item__label">Overview</span>
         </a>
+        <a href="#ad-builder" class="nav-item" data-section="ad-builder">
+          <span class="nav-item__icon">&#9998;</span>
+          <span class="nav-item__label">Ad Builder</span>
+        </a>
         <a href="#campaigns" class="nav-item" data-section="campaigns">
           <span class="nav-item__icon">&#9654;</span>
           <span class="nav-item__label">Campaigns</span>
@@ -122,6 +126,9 @@
           </div>
         </section>
 
+        <section class="section" id="ad-builder">
+          <div class="builder" id="builder"></div>
+        </section>
         <section class="section" id="campaigns">
           <div class="card"><h2 class="card__title">Campaigns</h2><p class="muted">Campaign list goes here.</p></div>
         </section>
@@ -151,7 +158,10 @@
           <div class="card">
             <div class="card__header">
               <h2 class="card__title">Ad Accounts</h2>
-              <button class="btn btn--primary" id="addAccount">Add account</button>
+              <div class="btn-row">
+                <button class="btn" id="refreshAccounts" title="Pull ad accounts from the Hermes agent">Refresh from Hermes</button>
+                <button class="btn btn--primary" id="addAccount">Add account</button>
+              </div>
             </div>
             <div class="notice" id="accountsNotice"><span class="notice__dot"></span><span id="accountsNoticeText">Connecting to the server&hellip;</span></div>
             <div class="table-wrap table-wrap--sticky">
@@ -177,7 +187,14 @@
           </div>
         </section>
         <section class="section" id="settings">
-          <div class="card"><h2 class="card__title">Settings</h2><p class="muted">Account settings go here.</p></div>
+          <div class="card settings-card">
+            <h2 class="card__title">Hermes agent</h2>
+            <p class="muted" style="margin-bottom:16px">Connect the Hermes agent to launch campaigns and pull ad accounts. The key is stored on the server and never shown again in full.</p>
+            <div class="notice" id="hermesNotice"><span class="notice__dot"></span><span id="hermesNoticeText">Checking connection&hellip;</span></div>
+            <div class="field"><label for="hermesUrl">Hermes URL</label><input class="table__input" id="hermesUrl" type="url" placeholder="https://hermes.example.com/api"></div>
+            <div class="field"><label for="hermesKey">API key</label><input class="table__input" id="hermesKey" type="password" placeholder="Paste a new key to replace the saved one" autocomplete="off"></div>
+            <div class="btn-row"><button class="btn btn--primary" id="saveHermes">Save connection</button></div>
+          </div>
         </section>
       </main>
     </div>
@@ -185,5 +202,7 @@
 
   <script src="app.js"></script>
   <script src="ad-accounts.js"></script>
+  <script src="ad-builder.js"></script>
+  <script src="settings.js"></script>
 </body>
 </html>

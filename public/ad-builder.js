@@ -1,0 +1,550 @@
+// Ad Builder: a nine-step campaign form saved to the server as a campaign draft.
+(function () {
+  var root = document.getElementById('builder');
+  if (!root) return;
+
+  var API = '/api/campaigns';
+  var GENERAL_QUESTIONS = [
+    ['email', 'Email'], ['full_name', 'Full name'], ['phone', 'Phone number'], ['first_name', 'First name'],
+    ['last_name', 'Last name'], ['city', 'City'], ['company', 'Company name'], ['job_title', 'Job title']
+  ];
+  var OBJECTIVES = [['leads', 'Leads'], ['sales', 'Sales'], ['traffic', 'Traffic'], ['engagement', 'Engagement'], ['app', 'App promotion'], ['awareness', 'Awareness']];
+  var EVENTS = ['Lead', 'Purchase', 'CompleteRegistration', 'Contact', 'SubmitApplication', 'Schedule', 'Subscribe', 'AddToCart', 'InitiateCheckout', 'ViewContent', 'Custom'];
+
+  var campaigns = [];      // [{id, name, status}]
+  var camp = null;         // the loaded campaign {id, name, status, data}
+  var accounts = [];       // ad accounts for step 5
+  var library = [];        // creatives for step 6
+  var saveTimer = null;
+  var saveState = null;    // element showing Saved / Saving
+
+  // ---------- tiny DOM helpers ----------
+  function h(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === 'text') node.textContent = attrs[k];
+      else if (k === 'html') node.innerHTML = attrs[k];
+      else if (k.slice(0, 2) === 'on') node.addEventListener(k.slice(2), attrs[k]);
+      else if (k === 'value') node.value = attrs[k];
+      else if (k === 'checked') node.checked = !!attrs[k];
+      else if (k === 'disabled') node.disabled = !!attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return node;
+  }
+  function field(label, control, hint) {
+    return h('div', { 'class': 'field' }, [h('label', { text: label }), control, hint ? h('span', { 'class': 'field__hint', text: hint }) : null]);
+  }
+  function text(value, placeholder, onInput, type) {
+    return h('input', { 'class': 'table__input', type: type || 'text', value: value || '', placeholder: placeholder || '', oninput: function (e) { onInput(e.target.value); dirty(); } });
+  }
+  function area(value, placeholder, onInput, rows) {
+    var t = h('textarea', { 'class': 'table__input', placeholder: placeholder || '', rows: String(rows || 3), oninput: function (e) { onInput(e.target.value); dirty(); } });
+    t.value = value || '';
+    return t;
+  }
+  function number(value, min, max, onInput) {
+    return h('input', { 'class': 'table__input', type: 'number', min: String(min), max: String(max), value: value == null ? '' : String(value), oninput: function (e) { onInput(e.target.value === '' ? '' : Number(e.target.value)); dirty(); } });
+  }
+  function select(options, value, onChange) {
+    var s = h('select', { 'class': 'table__input', onchange: function (e) { onChange(e.target.value); dirty(); } });
+    options.forEach(function (o) {
+      var opt = h('option', { value: o[0], text: o[1] });
+      if (o[0] === value) opt.selected = true;
+      s.appendChild(opt);
+    });
+    return s;
+  }
+  function toggle(label, checked, onChange) {
+    var input = h('input', { type: 'checkbox', checked: checked, onchange: function (e) { onChange(e.target.checked); dirty(); } });
+    return h('label', { 'class': 'toggle' }, [input, h('span', { 'class': 'toggle__track' }), h('span', { text: label })]);
+  }
+  function chips(options, value, onChange) {
+    var wrap = h('div', { 'class': 'chips' });
+    options.forEach(function (o) {
+      wrap.appendChild(h('button', { type: 'button', 'class': 'chip' + (o[0] === value ? ' is-on' : ''), text: o[1], onclick: function () {
+        onChange(o[0]); dirty();
+        Array.prototype.forEach.call(wrap.children, function (c, i) { c.classList.toggle('is-on', options[i][0] === o[0]); });
+      } }));
+    });
+    return wrap;
+  }
+  function check(label, checked, onChange) {
+    return h('label', { 'class': 'check' }, [h('input', { type: 'checkbox', checked: checked, onchange: function (e) { onChange(e.target.checked); dirty(); } }), h('span', { text: label })]);
+  }
+  function btn(label, cls, onClick) { return h('button', { type: 'button', 'class': 'btn ' + (cls || ''), text: label, onclick: onClick }); }
+  function smallBtn(label, cls, onClick) { return btn(label, 'btn--small ' + (cls || ''), onClick); }
+  function step(num, title, sub, children, off) {
+    return h('div', { 'class': 'card step' + (off ? ' is-off' : ''), id: 'step-' + num }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: String(num) }), h('div', {}, [h('h2', { 'class': 'step__title', text: title }), sub ? h('div', { 'class': 'step__sub', text: sub }) : null])])
+    ].concat(children || []));
+  }
+  function uid() { return Math.random().toString(36).slice(2, 10); }
+
+  // ---------- server ----------
+  function request(method, url, data) {
+    return fetch(url, { method: method, headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined, cache: 'no-store' })
+      .then(function (res) {
+        return res.text().then(function (t) {
+          var j; try { j = t ? JSON.parse(t) : null; } catch (e) { j = null; }
+          if (!res.ok) throw new Error((j && j.error) || ('Server returned ' + res.status));
+          return j;
+        });
+      });
+  }
+
+  // ---------- campaign data ----------
+  function defaults() {
+    return {
+      copy: [''], headlines: [''],
+      destination: 'landing', landingUrl: '',
+      targeting: { locations: '', ageMin: 18, ageMax: 65, gender: 'all', mode: 'advantage', interests: '' },
+      accountId: '',
+      creativeIds: [],
+      adSets: [],
+      leadForm: {
+        greetingOn: true, greetingHeadline: '', greetingDesc: '',
+        questions: [], general: ['email', 'full_name', 'phone'], logicOn: false,
+        privacyUrl: '', privacyDesc: '',
+        thanks: { headline: '', desc: '', ctaLink: '', ctaLabel: '' }
+      },
+      landingPage: { pixelId: '', objective: 'leads', event: 'Lead', customEvent: '' }
+    };
+  }
+  function merge(base, over) {
+    if (!over || typeof over !== 'object' || Array.isArray(over)) return over === undefined ? base : over;
+    var out = Object.assign({}, base);
+    Object.keys(over).forEach(function (k) {
+      out[k] = (base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) ? merge(base[k], over[k]) : over[k];
+    });
+    return out;
+  }
+
+  function dirty() {
+    if (!camp) return;
+    setSave('Saving…', false);
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 700);
+  }
+  function save() {
+    if (!camp) return Promise.resolve();
+    var snapshot = { name: camp.name, status: camp.status, data: camp.data };
+    return request('PUT', API + '/' + camp.id, snapshot).then(function (row) {
+      setSave('Saved ' + new Date(row.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), false);
+      var entry = campaigns.filter(function (c) { return c.id === camp.id; })[0];
+      if (entry) { entry.name = row.name; entry.status = row.status; }
+      var opt = root.querySelector('#campaignSelect option[value="' + camp.id + '"]');
+      if (opt) opt.textContent = row.name;
+    }, function (err) { setSave('Not saved: ' + err.message, true); });
+  }
+  function setSave(textValue, isError) {
+    if (!saveState) return;
+    saveState.textContent = textValue;
+    saveState.classList.toggle('is-error', !!isError);
+  }
+
+  // ---------- top bar ----------
+  function renderBar() {
+    var sel = h('select', { 'class': 'table__input', id: 'campaignSelect', onchange: function (e) { if (e.target.value === '__new') createCampaign(); else openCampaign(e.target.value); } });
+    campaigns.forEach(function (c) { var o = h('option', { value: c.id, text: c.name }); if (camp && c.id === camp.id) o.selected = true; sel.appendChild(o); });
+    sel.appendChild(h('option', { value: '__new', text: '+ New campaign' }));
+    if (!camp) { var ph = h('option', { value: '', text: 'Choose a campaign' }); ph.selected = true; sel.insertBefore(ph, sel.firstChild); }
+
+    var bar = h('div', { 'class': 'builder__bar' }, [sel]);
+    if (camp) {
+      bar.appendChild(h('input', { 'class': 'table__input builder__name', id: 'campaignName', value: camp.name, placeholder: 'Campaign name', oninput: function (e) { camp.name = e.target.value.trim() || 'Untitled campaign'; dirty(); } }));
+      bar.appendChild(h('span', { 'class': 'badge badge--' + (camp.status === 'launched' ? 'launched' : camp.status === 'ready' ? 'ready' : 'draft'), text: camp.status.charAt(0).toUpperCase() + camp.status.slice(1) }));
+      bar.appendChild(smallBtn('Delete', 'btn--danger', function () {
+        if (!confirm('Delete campaign "' + camp.name + '"? This cannot be undone.')) return;
+        request('DELETE', API + '/' + camp.id).then(function () { camp = null; return loadList(); }).then(renderAll, function (err) { alert('Could not delete: ' + err.message); });
+      }));
+      saveState = h('span', { 'class': 'builder__save', text: 'Saved' });
+      bar.appendChild(saveState);
+    }
+    return bar;
+  }
+
+  // ---------- steps ----------
+  function stringList(items, placeholder, onChange, multiline) {
+    var wrap = h('div', { 'class': 'list' });
+    function draw() {
+      wrap.innerHTML = '';
+      items.forEach(function (val, i) {
+        var input = multiline ? area(val, placeholder, function (v) { items[i] = v; }) : text(val, placeholder, function (v) { items[i] = v; });
+        wrap.appendChild(h('div', { 'class': 'list-item' }, [
+          h('span', { 'class': 'list-item__num', text: String(i + 1) }), input,
+          smallBtn('✕', '', function () { items.splice(i, 1); if (!items.length) items.push(''); draw(); dirty(); onChange && onChange(); })
+        ]));
+      });
+    }
+    draw();
+    return h('div', {}, [wrap, smallBtn('+ Add another', '', function () { items.push(''); draw(); dirty(); onChange && onChange(); })]);
+  }
+
+  function step1() { return step(1, 'Ad copy', 'Primary text shown above the creative. Add variants to test different angles.', [stringList(camp.data.copy, 'Write the ad copy…', null, true)]); }
+  function step2() { return step(2, 'Headlines', 'Short and specific. Meta shows up to five per ad.', [stringList(camp.data.headlines, 'Headline')]); }
+
+  function step3() {
+    var d = camp.data;
+    var urlField = field('Landing page URL', text(d.landingUrl, 'https://', function (v) { d.landingUrl = v; }, 'url'), 'Pixel and conversion settings are in step 9.');
+    var formHint = h('p', { 'class': 'muted', text: 'Build the form in step 8.' });
+    function sync() { urlField.hidden = d.destination !== 'landing'; formHint.hidden = d.destination !== 'leadform'; toggleSteps(); }
+    var choice = chips([['landing', 'Landing page'], ['leadform', 'Instant lead form']], d.destination, function (v) { d.destination = v; sync(); });
+    sync();
+    return step(3, 'Destination', 'Where people go when they click the ad.', [choice, h('div', { style: 'height:12px' }), urlField, formHint]);
+  }
+
+  function targetingFields(t, includeGender) {
+    var interests = field('Interests, behaviours, demographics', area(t.interests, 'e.g. Interested in home renovation; Homeowners; Age 30–55', function (v) { t.interests = v; }), 'One per line. Used only with detailed targeting.');
+    function sync() { interests.hidden = t.mode !== 'detailed'; }
+    var mode = chips([['advantage', 'Advantage+ audience'], ['detailed', 'Detailed targeting']], t.mode, function (v) { t.mode = v; sync(); });
+    sync();
+    var row = [field('Age from', number(t.ageMin, 13, 65, function (v) { t.ageMin = v; })), field('Age to', number(t.ageMax, 13, 65, function (v) { t.ageMax = v; }))];
+    if (includeGender) row.push(field('Gender', select([['all', 'All'], ['men', 'Men'], ['women', 'Women']], t.gender, function (v) { t.gender = v; })));
+    return h('div', {}, [
+      field('Area / locations', area(t.locations, 'e.g. Sydney +40km; Melbourne; New South Wales', function (v) { t.locations = v; }, 2), 'Cities, regions, or radius targets, one per line.'),
+      h('div', { 'class': 'field-row' }, row),
+      field('Targeting type', mode),
+      interests
+    ]);
+  }
+  function step4() { return step(4, 'Targeting', 'Campaign defaults. Each ad set can use these or set its own in step 7.', [targetingFields(camp.data.targeting, true)]); }
+
+  function step5() {
+    var d = camp.data;
+    var options = [['', 'Choose an ad account…']].concat(accounts.map(function (a) { return [a.id, a.client + (a.company ? ' – ' + a.company : '')]; }));
+    var sel = select(options, d.accountId, function (v) { d.accountId = v; });
+    var hint = accounts.length ? 'From the Ad Accounts tab.' : 'No ad accounts yet. Add them in the Ad Accounts tab.';
+    return step(5, 'Account selection', 'Which ad account this campaign launches in.', [field('Ad account', sel, hint)]);
+  }
+
+  function step6() {
+    var d = camp.data;
+    var grid = h('div', { 'class': 'creatives' });
+    var status = h('div', { 'class': 'progress' });
+    function drawGrid() {
+      grid.innerHTML = '';
+      if (!library.length) grid.appendChild(h('p', { 'class': 'muted', text: 'No creatives yet. Upload a file or add one by URL below.' }));
+      library.forEach(function (c) {
+        var on = d.creativeIds.indexOf(c.id) !== -1;
+        var thumb;
+        if (/^image\//.test(c.mime || '')) thumb = h('img', { 'class': 'creative__thumb', src: '/api/creatives/' + c.id, alt: c.name, loading: 'lazy' });
+        else if (/^video\//.test(c.mime || '')) thumb = h('div', { 'class': 'creative__thumb creative__thumb--icon', text: '▶' });
+        else thumb = h('div', { 'class': 'creative__thumb creative__thumb--icon', text: '🔗' });
+        var tile = h('div', { 'class': 'creative' + (on ? ' is-on' : ''), title: c.url || c.name, onclick: function () {
+          var i = d.creativeIds.indexOf(c.id);
+          if (i === -1) d.creativeIds.push(c.id); else d.creativeIds.splice(i, 1);
+          drawGrid(); dirty(); refreshAdSets();
+        } }, [
+          thumb,
+          h('span', { 'class': 'creative__check', text: on ? '✓' : '' }),
+          h('button', { type: 'button', 'class': 'creative__del', text: '✕', title: 'Delete from library', onclick: function (e) {
+            e.stopPropagation();
+            if (!confirm('Delete "' + c.name + '" from the creative library?')) return;
+            request('DELETE', '/api/creatives/' + c.id).then(function () {
+              library = library.filter(function (x) { return x.id !== c.id; });
+              d.creativeIds = d.creativeIds.filter(function (id) { return id !== c.id; });
+              drawGrid(); dirty(); refreshAdSets();
+            }, function (err) { status.textContent = 'Could not delete: ' + err.message; });
+          } }),
+          h('div', { 'class': 'creative__name', text: c.name })
+        ]);
+        grid.appendChild(tile);
+      });
+    }
+    drawGrid();
+
+    // Upload
+    var fileInput = h('input', { type: 'file', accept: 'image/*,video/*', multiple: 'multiple', onchange: function (e) { uploadFiles(e.target.files); e.target.value = ''; } });
+    var drop = h('label', { 'class': 'drop' }, [fileInput, h('div', { text: 'Click to upload images or videos' }), h('div', { 'class': 'field__hint', text: 'Up to 3.5 MB each. Larger files: add by URL.' })]);
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('is-over'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('is-over'); });
+    drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('is-over'); uploadFiles(e.dataTransfer.files); });
+    function uploadFiles(files) {
+      var list = Array.prototype.slice.call(files || []);
+      if (!list.length) return;
+      var done = 0;
+      status.textContent = 'Uploading 1 of ' + list.length + '…';
+      list.reduce(function (chain, file) {
+        return chain.then(function () {
+          if (file.size > 3.5 * 1024 * 1024) { status.textContent = file.name + ' is over 3.5 MB. Add it by URL instead.'; return; }
+          return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function () { resolve(String(reader.result).split(',')[1]); };
+            reader.onerror = function () { reject(new Error('Could not read ' + file.name)); };
+            reader.readAsDataURL(file);
+          }).then(function (base64) {
+            return request('POST', '/api/creatives', { name: file.name, mime: file.type, data: base64 });
+          }).then(function (row) {
+            library.push(row); d.creativeIds.push(row.id); done++;
+            status.textContent = 'Uploading ' + Math.min(done + 1, list.length) + ' of ' + list.length + '…';
+            drawGrid(); dirty(); refreshAdSets();
+          });
+        });
+      }, Promise.resolve()).then(function () { status.textContent = done ? 'Uploaded ' + done + ' file' + (done === 1 ? '' : 's') + '.' : status.textContent; },
+        function (err) { status.textContent = 'Upload failed: ' + err.message; });
+    }
+
+    // Add by URL
+    var urlName = h('input', { 'class': 'table__input', placeholder: 'Name' });
+    var urlValue = h('input', { 'class': 'table__input', type: 'url', placeholder: 'https://link-to-the-creative' });
+    var addUrl = smallBtn('Add by URL', 'btn--primary', function () {
+      if (!urlName.value.trim() || !urlValue.value.trim()) { status.textContent = 'Give the creative a name and a URL.'; return; }
+      request('POST', '/api/creatives', { name: urlName.value.trim(), url: urlValue.value.trim(), mime: /\.(mp4|mov|webm)(\?|$)/i.test(urlValue.value) ? 'video/link' : /\.(png|jpe?g|gif|webp)(\?|$)/i.test(urlValue.value) ? 'image/link' : '' })
+        .then(function (row) { library.push(row); d.creativeIds.push(row.id); urlName.value = ''; urlValue.value = ''; status.textContent = 'Added.'; drawGrid(); dirty(); refreshAdSets(); },
+          function (err) { status.textContent = 'Could not add: ' + err.message; });
+    });
+    var byUrl = h('div', {}, [field('Name', urlName), field('URL', urlValue), addUrl]);
+
+    return step(6, 'Creative upload or selection', 'Tick the creatives this campaign uses. Each ticked creative becomes one ad.', [
+      grid, h('div', { 'class': 'upload' }, [drop, byUrl]), status
+    ]);
+  }
+
+  // Step 7: ad sets. Re-drawn when the creative selection changes.
+  var adSetsBox = null;
+  function refreshAdSets() { if (adSetsBox) drawAdSets(); }
+  function drawAdSets() {
+    var d = camp.data;
+    adSetsBox.innerHTML = '';
+    var selected = library.filter(function (c) { return d.creativeIds.indexOf(c.id) !== -1; });
+    if (!d.adSets.length) adSetsBox.appendChild(h('p', { 'class': 'muted', text: 'No ad sets yet. Each ad set has its own audience and its own choice of ads.' }));
+    d.adSets.forEach(function (set, i) {
+      set.creativeIds = (set.creativeIds || []).filter(function (id) { return d.creativeIds.indexOf(id) !== -1; });
+      var adChecks = h('div', { 'class': 'checks' });
+      if (!selected.length) adChecks.appendChild(h('span', { 'class': 'muted', text: 'Select creatives in step 6 first.' }));
+      selected.forEach(function (c) {
+        adChecks.appendChild(check(c.name, set.creativeIds.indexOf(c.id) !== -1, function (on) {
+          var k = set.creativeIds.indexOf(c.id);
+          if (on && k === -1) set.creativeIds.push(c.id); else if (!on && k !== -1) set.creativeIds.splice(k, 1);
+        }));
+      });
+      var custom = h('div', {}, [targetingFields(set.targeting, false)]);
+      function sync() { custom.hidden = set.useCampaignTargeting; }
+      var use = toggle('Use campaign targeting from step 4', set.useCampaignTargeting, function (v) { set.useCampaignTargeting = v; sync(); });
+      sync();
+      adSetsBox.appendChild(h('div', { 'class': 'subcard' }, [
+        h('div', { 'class': 'subcard__head' }, [
+          h('span', { 'class': 'step__num', text: String(i + 1) }),
+          text(set.name, 'Ad set name', function (v) { set.name = v; }),
+          smallBtn('Remove', 'btn--danger', function () { d.adSets.splice(i, 1); drawAdSets(); dirty(); })
+        ]),
+        field('Ads in this ad set', adChecks, 'Which of the selected creatives run here.'),
+        field('Ad set setup', use),
+        custom
+      ]));
+    });
+    adSetsBox.appendChild(smallBtn('+ Add ad set', 'btn--primary', function () {
+      d.adSets.push({ id: uid(), name: 'Ad set ' + (d.adSets.length + 1), creativeIds: selected.map(function (c) { return c.id; }), useCampaignTargeting: true, targeting: merge(defaults().targeting, d.targeting) });
+      drawAdSets(); dirty();
+    }));
+  }
+  function step7() { adSetsBox = h('div', {}); drawAdSets(); return step(7, 'Ad set builder', 'Choose which ads run in each ad set and how each one is targeted.', [adSetsBox]); }
+
+  // Step 8: lead form
+  function step8() {
+    var f = camp.data.leadForm;
+    var greetFields = h('div', {}, [
+      field('Greeting headline', text(f.greetingHeadline, 'e.g. Get a free quote in 60 seconds', function (v) { f.greetingHeadline = v; })),
+      field('Greeting description', area(f.greetingDesc, 'What people get by filling in the form', function (v) { f.greetingDesc = v; }, 2))
+    ]);
+    function syncGreet() { greetFields.hidden = !f.greetingOn; }
+    var greet = toggle('Show a greeting screen', f.greetingOn, function (v) { f.greetingOn = v; syncGreet(); });
+    syncGreet();
+
+    var questionsBox = h('div', {});
+    function logicTargets(fromIndex) {
+      var list = [['', 'Next question']];
+      f.questions.forEach(function (q, j) { if (j > fromIndex) list.push([q.id, 'Q' + (j + 1) + ': ' + (q.text || 'Untitled')]); });
+      list.push(['general', 'Contact details']);
+      list.push(['end_qualified', 'End: qualified lead']);
+      list.push(['end_dq', 'End: disqualified']);
+      return list;
+    }
+    function drawQuestions() {
+      questionsBox.innerHTML = '';
+      if (!f.questions.length) questionsBox.appendChild(h('p', { 'class': 'muted', text: 'No custom questions. Contact details are still collected below.' }));
+      f.questions.forEach(function (q, i) {
+        var body = h('div', {});
+        function drawBody() {
+          body.innerHTML = '';
+          if (q.type === 'multi') {
+            q.options = q.options && q.options.length ? q.options : [{ text: '', next: '' }, { text: '', next: '' }];
+            q.options.forEach(function (o, k) {
+              var row = h('div', { 'class': 'option-row' + (f.logicOn ? ' has-logic' : '') }, [
+                text(o.text, 'Answer ' + (k + 1), function (v) { o.text = v; }),
+                f.logicOn ? h('div', {}, [h('div', { 'class': 'logic-label', text: 'Then go to' }), select(logicTargets(i), o.next, function (v) { o.next = v; })]) : null,
+                smallBtn('✕', '', function () { q.options.splice(k, 1); drawBody(); dirty(); })
+              ]);
+              body.appendChild(row);
+            });
+            body.appendChild(smallBtn('+ Add answer', '', function () { q.options.push({ text: '', next: '' }); drawBody(); dirty(); }));
+          } else if (f.logicOn) {
+            body.appendChild(field('After this answer, go to', select(logicTargets(i), q.next || '', function (v) { q.next = v; })));
+          }
+        }
+        drawBody();
+        questionsBox.appendChild(h('div', { 'class': 'subcard question' }, [
+          h('div', { 'class': 'subcard__head' }, [
+            h('span', { 'class': 'step__num', text: 'Q' + (i + 1) }),
+            text(q.text, 'Question', function (v) { q.text = v; drawAllLogic(); }),
+            select([['short', 'Short answer'], ['multi', 'Multiple choice']], q.type, function (v) { q.type = v; drawBody(); }),
+            smallBtn('Remove', 'btn--danger', function () { f.questions.splice(i, 1); drawQuestions(); dirty(); })
+          ]),
+          body
+        ]));
+      });
+      questionsBox.appendChild(smallBtn('+ Add question', 'btn--primary', function () { f.questions.push({ id: uid(), type: 'multi', text: '', options: [{ text: '', next: '' }, { text: '', next: '' }], next: '' }); drawQuestions(); dirty(); }));
+    }
+    var redrawTimer = null;
+    function drawAllLogic() { if (!f.logicOn) return; clearTimeout(redrawTimer); redrawTimer = setTimeout(function () { var active = document.activeElement; if (active && active.tagName === 'INPUT') return; drawQuestions(); }, 1500); }
+    drawQuestions();
+
+    var general = h('div', { 'class': 'checks' });
+    GENERAL_QUESTIONS.forEach(function (g) {
+      general.appendChild(check(g[1], f.general.indexOf(g[0]) !== -1, function (on) {
+        var k = f.general.indexOf(g[0]);
+        if (on && k === -1) f.general.push(g[0]); else if (!on && k !== -1) f.general.splice(k, 1);
+      }));
+    });
+
+    var logic = toggle('Conditional logic: each answer decides the next question', f.logicOn, function (v) { f.logicOn = v; drawQuestions(); });
+
+    return step(8, 'Lead form builder', 'Used when the destination is an instant lead form.', [
+      field('Greeting', greet), greetFields,
+      field('Custom questions', questionsBox, 'Asked first, in order. Multiple choice answers can route people with conditional logic.'),
+      field('Conditional logic', logic, f.logicOn ? 'Every answer must lead somewhere: another question, contact details, or an end page.' : ''),
+      field('Contact details to collect', general),
+      h('div', { 'class': 'field-row' }, [
+        field('Privacy policy URL', text(f.privacyUrl, 'https://', function (v) { f.privacyUrl = v; }, 'url')),
+        field('Privacy policy description', text(f.privacyDesc, 'e.g. We only use your details to contact you about this offer', function (v) { f.privacyDesc = v; }))
+      ]),
+      h('h3', { 'class': 'card__title', text: 'Thank you page' }),
+      h('div', { 'class': 'field-row' }, [
+        field('Headline', text(f.thanks.headline, 'Thanks, we will be in touch', function (v) { f.thanks.headline = v; })),
+        field('Description', text(f.thanks.desc, 'What happens next', function (v) { f.thanks.desc = v; }))
+      ]),
+      h('div', { 'class': 'field-row' }, [
+        field('CTA link', text(f.thanks.ctaLink, 'https://', function (v) { f.thanks.ctaLink = v; }, 'url')),
+        field('CTA label', text(f.thanks.ctaLabel, 'e.g. Visit website', function (v) { f.thanks.ctaLabel = v; }))
+      ])
+    ], camp.data.destination !== 'leadform');
+  }
+
+  function step9() {
+    var lp = camp.data.landingPage;
+    var customField = field('Custom event name', text(lp.customEvent, 'e.g. QuoteRequested', function (v) { lp.customEvent = v; }));
+    function sync() { customField.hidden = lp.event !== 'Custom'; }
+    var ev = select(EVENTS.map(function (e) { return [e, e.replace(/([a-z])([A-Z])/g, '$1 $2')]; }), lp.event, function (v) { lp.event = v; sync(); });
+    sync();
+    return step(9, 'Landing page builder', 'Used when the destination is a landing page.', [
+      h('div', { 'class': 'field-row' }, [
+        field('Pixel ID', text(lp.pixelId, 'e.g. 123456789012345', function (v) { lp.pixelId = v; })),
+        field('Conversion objective', select(OBJECTIVES, lp.objective, function (v) { lp.objective = v; })),
+        field('Conversion event', ev)
+      ]),
+      customField
+    ], camp.data.destination !== 'landing');
+  }
+
+  function toggleSteps() {
+    var s8 = root.querySelector('#step-8'), s9 = root.querySelector('#step-9');
+    if (s8) s8.classList.toggle('is-off', camp.data.destination !== 'leadform');
+    if (s9) s9.classList.toggle('is-off', camp.data.destination !== 'landing');
+  }
+
+  // ---------- launch ----------
+  function problems() {
+    var d = camp.data, list = [];
+    if (!d.copy.some(function (c) { return c.trim(); })) list.push('Add at least one ad copy (step 1).');
+    if (!d.headlines.some(function (c) { return c.trim(); })) list.push('Add at least one headline (step 2).');
+    if (d.destination === 'landing' && !/^https?:\/\//i.test(d.landingUrl)) list.push('Enter a landing page URL (step 3).');
+    if (!d.accountId) list.push('Choose an ad account (step 5).');
+    if (!d.creativeIds.length) list.push('Select at least one creative (step 6).');
+    if (!d.adSets.length) list.push('Add at least one ad set (step 7).');
+    d.adSets.forEach(function (s, i) { if (!s.creativeIds.length) list.push('Ad set ' + (i + 1) + ' has no ads (step 7).'); });
+    if (d.destination === 'leadform') {
+      if (!d.leadForm.general.length && !d.leadForm.questions.length) list.push('The lead form needs at least one question (step 8).');
+      if (!/^https?:\/\//i.test(d.leadForm.privacyUrl)) list.push('Enter a privacy policy URL (step 8).');
+      if (d.leadForm.logicOn) d.leadForm.questions.forEach(function (q, i) {
+        if (q.type === 'multi') q.options.forEach(function (o, k) { if (!o.next) list.push('Q' + (i + 1) + ' answer ' + (k + 1) + ' needs a next step (step 8).'); });
+        else if (!q.next) list.push('Q' + (i + 1) + ' needs a next step (step 8).');
+      });
+    }
+    if (d.destination === 'landing' && !d.landingPage.pixelId.trim()) list.push('Enter the pixel ID (step 9).');
+    return list;
+  }
+  function launchCard() {
+    var warn = h('ul', { 'class': 'warn-list' });
+    var result = h('div', { 'class': 'progress' });
+    var button = btn(camp.status === 'launched' ? 'Launch again via Hermes' : 'Launch via Hermes', 'btn--primary', function () {
+      var issues = problems();
+      warn.innerHTML = '';
+      if (issues.length) { issues.forEach(function (p) { warn.appendChild(h('li', { text: p })); }); return; }
+      button.disabled = true; result.textContent = 'Sending to Hermes…';
+      save().then(function () { return request('POST', '/api/hermes/launch', { campaignId: camp.id }); })
+        .then(function (res) { camp.status = 'launched'; result.textContent = 'Sent to Hermes. Campaign marked as launched.'; renderAll(); },
+          function (err) { result.textContent = err.message; })
+        .then(function () { button.disabled = false; });
+    });
+    return h('div', { 'class': 'card step' }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: '➜' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Launch' }), h('div', { 'class': 'step__sub', text: 'Checks the campaign, then hands it to the Hermes agent to build in Ads Manager.' })])]),
+      warn, h('div', { 'class': 'btn-row' }, [button, smallBtn('Check for problems', '', function () { var issues = problems(); warn.innerHTML = ''; (issues.length ? issues : ['Everything needed is filled in.']).forEach(function (p) { warn.appendChild(h('li', { text: p, style: issues.length ? '' : 'color: var(--success)' })); }); })]), result
+    ]);
+  }
+
+  // ---------- assembly ----------
+  function renderAll() {
+    root.innerHTML = '';
+    root.appendChild(renderBar());
+    if (!camp) {
+      root.appendChild(h('div', { 'class': 'card builder__empty' }, [
+        h('p', { 'class': 'muted', text: campaigns.length ? 'Choose a campaign above or start a new one.' : 'No campaigns yet.' }),
+        btn('New campaign', 'btn--primary', createCampaign)
+      ]));
+      return;
+    }
+    [step1, step2, step3, step4, step5, step6, step7, step8, step9].forEach(function (fn) { root.appendChild(fn()); });
+    root.appendChild(launchCard());
+  }
+
+  function loadList() { return request('GET', API).then(function (list) { campaigns = list || []; }); }
+  function loadRefs() {
+    return Promise.all([
+      request('GET', '/api/ad-accounts').then(function (l) { accounts = l || []; }, function () { accounts = []; }),
+      request('GET', '/api/creatives').then(function (l) { library = l || []; }, function () { library = []; })
+    ]);
+  }
+  function openCampaign(id) {
+    return Promise.all([request('GET', API + '/' + id), loadRefs()]).then(function (r) {
+      var row = r[0];
+      camp = { id: row.id, name: row.name, status: row.status, data: merge(defaults(), row.data || {}) };
+      try { localStorage.setItem('adbuilder.lastCampaign', id); } catch (e) {}
+      renderAll();
+    }, function (err) { root.innerHTML = ''; root.appendChild(h('div', { 'class': 'notice notice--error' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Could not load the campaign: ' + err.message })])); });
+  }
+  function createCampaign() {
+    request('POST', API, { name: 'New campaign', data: defaults() }).then(function (row) { return loadList().then(function () { return openCampaign(row.id); }); },
+      function (err) { alert('Could not create a campaign: ' + err.message); });
+  }
+
+  function init() {
+    root.appendChild(h('p', { 'class': 'muted', text: 'Loading…' }));
+    loadList().then(function () {
+      var last = null;
+      try { last = localStorage.getItem('adbuilder.lastCampaign'); } catch (e) {}
+      if (last && campaigns.some(function (c) { return c.id === last; })) return openCampaign(last);
+      if (campaigns.length === 1) return openCampaign(campaigns[0].id);
+      renderAll();
+    }, function (err) {
+      root.innerHTML = '';
+      root.appendChild(h('div', { 'class': 'notice notice--error' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Ad Builder needs the server API: ' + err.message })]));
+    });
+  }
+
+  // Reload the ad account list when the tab is opened, in case accounts changed.
+  window.addEventListener('hashchange', function () { if (location.hash === '#ad-builder' && camp) loadRefs().then(function () { var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5()); }); });
+
+  init();
+})();

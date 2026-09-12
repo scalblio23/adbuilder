@@ -7,11 +7,12 @@ var http = require('http');
 var fs = require('fs');
 var path = require('path');
 var handlers = require('./lib/handlers');
+var api = require('./lib/api');
 var store = require('./lib/store');
 
 var PORT = parseInt(process.env.PORT, 10) || 8080;
 var ROOT = path.join(__dirname, 'public');
-var MAX_BODY = 64 * 1024;
+var MAX_BODY = 6 * 1024 * 1024;   // creative uploads are sent as base64 JSON
 
 var MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -41,9 +42,8 @@ function serveStatic(req, res) {
   var urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
   var filePath = path.normalize(path.join(ROOT, urlPath));
-  var inRoot = filePath.indexOf(ROOT + path.sep) === 0;
-  var publicFile = /^\/(index\.html|styles\.css|app\.js|ad-accounts\.js)$/.test(urlPath);
-  if (!inRoot || !publicFile) { res.writeHead(404); return res.end('Not found'); }
+  var inRoot = filePath.indexOf(ROOT + path.sep) === 0;   // everything under public/ is public
+  if (!inRoot || /(^|\/)\./.test(urlPath)) { res.writeHead(404); return res.end('Not found'); }
   fs.readFile(filePath, function (err, content) {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
@@ -53,14 +53,25 @@ function serveStatic(req, res) {
 
 var health = require('./api/health');
 
+// API routes: [pattern, handler(req, res, id, body)]
+var ROUTES = [
+  [/^\/api\/ad-accounts(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? handlers.item(req, res, id, body) : handlers.collection(req, res, body); }],
+  [/^\/api\/campaigns(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? api.campaign(req, res, id, body) : api.campaigns(req, res, body); }],
+  [/^\/api\/creatives(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? api.creative(req, res, id, body) : api.creatives(req, res, body); }],
+  [/^\/api\/settings\/?$/, function (req, res, id, body) { api.settings(req, res, body); }],
+  [/^\/api\/hermes\/launch\/?$/, function (req, res, id, body) { api.hermesLaunch(req, res, body); }],
+  [/^\/api\/hermes\/accounts\/?$/, function (req, res, id, body) { api.hermesAccounts(req, res, body); }]
+];
+
 http.createServer(function (req, res) {
-  if (req.url.split('?')[0] === '/api/health') return health(req, res);
-  var match = /^\/api\/ad-accounts(?:\/([^/]+))?\/?$/.exec(req.url.split('?')[0]);
-  if (match) {
-    return readBody(req, function (body) {
-      if (match[1]) handlers.item(req, res, match[1], body);
-      else handlers.collection(req, res, body);
-    });
+  var pathname = req.url.split('?')[0];
+  if (pathname === '/api/health') return health(req, res);
+  for (var i = 0; i < ROUTES.length; i++) {
+    var match = ROUTES[i][0].exec(pathname);
+    if (match) {
+      var handle = ROUTES[i][1];
+      return readBody(req, function (body) { handle(req, res, match[1], body); });
+    }
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   serveStatic(req, res);
