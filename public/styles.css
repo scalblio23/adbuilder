@@ -505,3 +505,8 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .apikey__row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .apikey__value { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-muted); word-break: break-all; }
 .apikey__value.is-fresh { color: var(--success); border-color: var(--success); user-select: all; }
+
+/* Advanced fold */
+.advanced { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
+.advanced summary { cursor: pointer; color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
+.advanced summary:hover { color: var(--text); }

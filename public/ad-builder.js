@@ -611,17 +611,21 @@
       ].join('\n') })
     ]);
 
-    return h('div', { 'class': 'card step hermes', id: 'hermesCard' }, [
-      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: 'H' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Hermes agent' }), h('div', { 'class': 'step__sub', text: 'How this app reaches Hermes. The key is stored on the server and never shown again in full.' })])]),
+    var advanced = h('details', { 'class': 'advanced' }, [
+      h('summary', { text: 'Advanced: let this app call Hermes directly (Launch button, Refresh from Hermes)' }),
       status,
-      h('div', { 'class': 'field-row' }, [field('Hermes URL', url, 'Base address. Paths below are added to it.'), field('API key', key)]),
+      h('div', { 'class': 'field-row' }, [field('Hermes URL', url, 'Base address. Paths below are added to it.'), field('Hermes API key', key)]),
       h('div', { 'class': 'field-row' }, [field('Send the key as', auth), field('Launch path', launchPath, 'POST, receives the campaign payload.')]),
       h('div', { 'class': 'field-row' }, [field('Test method', testMethod), field('Test path', testPath, 'GET calls it plainly; POST sends { prompt: "Connection test…" }.'), field('Public base URL for asset links', publicBase, 'Leave blank to use this site\'s address.')]),
       h('div', { 'class': 'btn-row' }, [saveBtn, testBtn]),
-      out,
-      h('h3', { 'class': 'card__title', text: 'Key for Hermes to call this app', style: 'margin-top:24px' }),
-      h('p', { 'class': 'muted', text: 'Hermes keeps this key on its side (like its other API keys) and uses it to pull campaigns, prompts, and assets from here, and to report launch status back.', style: 'margin-bottom:12px' }),
-      keyBox, keyOut, endpoints
+      out
+    ]);
+    if (cfg.hermesConfigured) advanced.open = true;
+
+    return h('div', { 'class': 'card step hermes', id: 'hermesCard' }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: 'H' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Hermes access token' }), h('div', { 'class': 'step__sub', text: 'Generate a token, paste it into Hermes. Hermes then pulls campaigns, prompts, and assets from here and reports launch status back.' })])]),
+      keyBox, keyOut, endpoints,
+      advanced
     ]);
   }
 
