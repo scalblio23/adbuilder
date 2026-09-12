@@ -239,6 +239,13 @@
         } }, [
           thumb,
           h('span', { 'class': 'creative__check', text: on ? '✓' : '' }),
+          h('button', { type: 'button', 'class': 'creative__link', text: 'Copy link', title: 'Copy the shareable link Hermes will receive', onclick: function (e) {
+            e.stopPropagation();
+            var link = (c.url && !c.size) ? c.url : location.origin + '/api/creatives/' + c.id;
+            var done = function () { e.target.textContent = 'Copied'; e.target.classList.add('is-copied'); setTimeout(function () { e.target.textContent = 'Copy link'; e.target.classList.remove('is-copied'); }, 1500); };
+            if (navigator.clipboard) navigator.clipboard.writeText(link).then(done, function () { prompt('Shareable link', link); });
+            else prompt('Shareable link', link);
+          } }),
           h('button', { type: 'button', 'class': 'creative__del', text: '✕', title: 'Delete from library', onclick: function (e) {
             e.stopPropagation();
             if (!confirm('Delete "' + c.name + '" from the creative library?')) return;
@@ -475,22 +482,146 @@
     if (d.destination === 'landing' && !d.landingPage.pixelId.trim()) list.push('Enter the pixel ID (step 9).');
     return list;
   }
+  function replyBox(title, r) {
+    // r: { request?, status?, ok?, ms?, body?, error? }
+    var meta = h('div', { 'class': 'reply__meta' }, [
+      r.request ? h('span', { text: r.request }) : null,
+      r.status != null ? h('span', { 'class': r.ok ? 'reply__ok' : 'reply__bad', text: 'HTTP ' + r.status + (r.ok ? ' OK' : '') }) : null,
+      r.ms != null ? h('span', { text: r.ms + ' ms' }) : null
+    ]);
+    var bodyText = r.error ? r.error : (typeof r.body === 'string' ? r.body : JSON.stringify(r.body, null, 2));
+    return h('div', { 'class': 'reply' }, [h('div', { 'class': 'step__sub', text: title, style: 'margin-bottom:6px' }), meta, h('pre', { text: bodyText || '(empty reply)' })]);
+  }
+
   function launchCard() {
     var warn = h('ul', { 'class': 'warn-list' });
-    var result = h('div', { 'class': 'progress' });
-    var button = btn(camp.status === 'launched' ? 'Launch again via Hermes' : 'Launch via Hermes', 'btn--primary', function () {
+    var out = h('div', {});
+    var launchBtn = btn(camp.status === 'launched' ? 'Launch again via Hermes' : 'Launch via Hermes', 'btn--primary', function () {
       var issues = problems();
-      warn.innerHTML = '';
+      warn.innerHTML = ''; out.innerHTML = '';
       if (issues.length) { issues.forEach(function (p) { warn.appendChild(h('li', { text: p })); }); return; }
-      button.disabled = true; result.textContent = 'Sending to Hermes…';
-      save().then(function () { return request('POST', '/api/hermes/launch', { campaignId: camp.id }); })
-        .then(function (res) { camp.status = 'launched'; result.textContent = 'Sent to Hermes. Campaign marked as launched.'; renderAll(); },
-          function (err) { result.textContent = err.message; })
-        .then(function () { button.disabled = false; });
+      launchBtn.disabled = true;
+      out.appendChild(h('p', { 'class': 'progress', text: 'Sending the campaign to Hermes…' }));
+      save().then(function () { return fetch('/api/hermes/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: camp.id }) }); })
+        .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, status: res.status, body: j }; }); })
+        .then(function (res) {
+          out.innerHTML = '';
+          if (res.ok) { camp.status = 'launched'; renderAll(); var box = root.querySelector('#launchOut'); if (box) box.appendChild(replyBox('Hermes accepted the campaign', res.body.reply)); }
+          else out.appendChild(replyBox('Launch failed', res.body.reply ? Object.assign({ error: res.body.error }, res.body.reply, { body: res.body.reply.body }) : { error: res.body.error || ('Server returned ' + res.status) }));
+        }, function (err) { out.innerHTML = ''; out.appendChild(replyBox('Launch failed', { error: err.message })); })
+        .then(function () { launchBtn.disabled = false; });
     });
-    return h('div', { 'class': 'card step' }, [
-      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: '➜' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Launch' }), h('div', { 'class': 'step__sub', text: 'Checks the campaign, then hands it to the Hermes agent to build in Ads Manager.' })])]),
-      warn, h('div', { 'class': 'btn-row' }, [button, smallBtn('Check for problems', '', function () { var issues = problems(); warn.innerHTML = ''; (issues.length ? issues : ['Everything needed is filled in.']).forEach(function (p) { warn.appendChild(h('li', { text: p, style: issues.length ? '' : 'color: var(--success)' })); }); })]), result
+    var previewBtn = smallBtn('Preview what Hermes receives', '', function () {
+      out.innerHTML = '';
+      previewBtn.disabled = true;
+      save().then(function () { return request('GET', '/api/hermes/preview?campaignId=' + encodeURIComponent(camp.id)); })
+        .then(function (p) {
+          out.appendChild(replyBox('Prompt (sent as payload.prompt)', { request: p.request, body: p.payload.prompt }));
+          out.appendChild(replyBox('Full JSON payload', { body: p.payload }));
+        }, function (err) { out.appendChild(replyBox('Preview failed', { error: err.message })); })
+        .then(function () { previewBtn.disabled = false; });
+    });
+    var checkBtn = smallBtn('Check for problems', '', function () { var issues = problems(); warn.innerHTML = ''; (issues.length ? issues : ['Everything needed is filled in.']).forEach(function (p) { warn.appendChild(h('li', { text: p, style: issues.length ? '' : 'color: var(--success)' })); }); });
+    return h('div', { 'class': 'card step', id: 'launchCard' }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: '➜' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Launch' }), h('div', { 'class': 'step__sub', text: 'Everything above is compiled into one prompt plus structured data and sent to Hermes in a single request. Asset links are public so Hermes can download them.' })])]),
+      warn, h('div', { 'class': 'btn-row' }, [launchBtn, previewBtn, checkBtn]), h('div', { id: 'launchOut' }, [out])
+    ]);
+  }
+
+  // ---------- Hermes config (bottom of the page) ----------
+  function hermesCard() {
+    var cfg = { hermesUrl: '', hermesKeyMasked: '', auth: 'bearer', launchPath: '/campaigns', testPath: '/health', testMethod: 'GET', publicBaseUrl: '', source: 'settings', hermesConfigured: false };
+    var status = h('div', { 'class': 'notice' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Loading Hermes settings…' })]);
+    function setStatus(kind, textValue) { status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = textValue; }
+    var url = h('input', { 'class': 'table__input', type: 'url', placeholder: 'https://hermes.example.com/api', id: 'hermesUrl' });
+    var key = h('input', { 'class': 'table__input', type: 'password', placeholder: 'Paste the Hermes API key', autocomplete: 'off', id: 'hermesKey' });
+    var auth = h('select', { 'class': 'table__input', id: 'hermesAuth' }, [['bearer', 'Authorization: Bearer <key>'], ['x-api-key', 'X-API-Key: <key>'], ['both', 'Both headers']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    var launchPath = h('input', { 'class': 'table__input', placeholder: '/campaigns', id: 'hermesLaunchPath' });
+    var testMethod = h('select', { 'class': 'table__input', id: 'hermesTestMethod' }, [h('option', { value: 'GET', text: 'GET' }), h('option', { value: 'POST', text: 'POST' })]);
+    var testPath = h('input', { 'class': 'table__input', placeholder: '/health', id: 'hermesTestPath' });
+    var publicBase = h('input', { 'class': 'table__input', type: 'url', placeholder: location.origin, id: 'hermesPublicBase' });
+    var out = h('div', {});
+    function fill() {
+      url.value = cfg.hermesUrl || ''; auth.value = cfg.auth || 'bearer'; launchPath.value = cfg.launchPath || ''; testMethod.value = cfg.testMethod || 'GET'; testPath.value = cfg.testPath || ''; publicBase.value = cfg.publicBaseUrl || '';
+      key.value = ''; key.placeholder = cfg.hermesKeyMasked ? 'Saved key ' + cfg.hermesKeyMasked + ' (paste a new one to replace)' : 'Paste the Hermes API key';
+      var locked = cfg.source === 'env';
+      [url, key, auth, launchPath, testMethod, testPath, publicBase, saveBtn].forEach(function (x) { x.disabled = locked; });
+      setStatus(cfg.hermesConfigured ? 'ok' : '', cfg.hermesConfigured ? 'Hermes is connected' + (locked ? ' (configured through environment variables on the host).' : '. Use Test connection to check it answers.') : 'Not connected yet. Enter the Hermes URL and API key, save, then test.');
+    }
+    var saveBtn = btn('Save', 'btn--primary', function () {
+      saveBtn.disabled = true;
+      request('PUT', '/api/settings', { hermesUrl: url.value.trim(), hermesKey: key.value.trim(), auth: auth.value, launchPath: launchPath.value.trim(), testPath: testPath.value.trim(), testMethod: testMethod.value, publicBaseUrl: publicBase.value.trim() })
+        .then(function (c) { cfg = c; fill(); setStatus(cfg.hermesConfigured ? 'ok' : '', cfg.hermesConfigured ? 'Saved. Hermes is connected. Use Test connection to check it answers.' : 'Saved. Add both the URL and key to connect.'); },
+          function (err) { setStatus('error', 'Could not save: ' + err.message); })
+        .then(function () { saveBtn.disabled = cfg.source === 'env'; });
+    });
+    var testBtn = btn('Test connection', '', function () {
+      out.innerHTML = ''; testBtn.disabled = true;
+      out.appendChild(h('p', { 'class': 'progress', text: 'Contacting Hermes…' }));
+      var pending = key.value.trim() || url.value.trim() !== (cfg.hermesUrl || '');
+      (pending ? request('PUT', '/api/settings', { hermesUrl: url.value.trim(), hermesKey: key.value.trim(), auth: auth.value, launchPath: launchPath.value.trim(), testPath: testPath.value.trim(), testMethod: testMethod.value, publicBaseUrl: publicBase.value.trim() }).then(function (c) { cfg = c; fill(); }) : Promise.resolve())
+        .then(function () { return fetch('/api/hermes/test', { method: 'POST' }); })
+        .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, status: res.status, body: j }; }); })
+        .then(function (res) {
+          out.innerHTML = '';
+          if (res.ok) out.appendChild(replyBox(res.body.ok ? 'Hermes replied' : 'Hermes replied with an error', res.body));
+          else out.appendChild(replyBox('Test failed', { error: res.body.error || ('Server returned ' + res.status) }));
+        }, function (err) { out.innerHTML = ''; out.appendChild(replyBox('Test failed', { error: err.message })); })
+        .then(function () { testBtn.disabled = false; });
+    });
+    request('GET', '/api/settings').then(function (c) { cfg = c; fill(); }, function (err) { setStatus('error', 'Could not load Hermes settings: ' + err.message); });
+
+    // ---- Key that Hermes uses to call this app ----
+    var keyState = { set: false, masked: '' };
+    var keyBox = h('div', { 'class': 'apikey' });
+    var keyOut = h('div', {});
+    function drawKey(fresh) {
+      keyBox.innerHTML = '';
+      keyBox.appendChild(h('div', { 'class': 'apikey__head' }, [
+        h('span', { 'class': 'apikey__name', text: 'ADBUILDER_API_KEY' }),
+        h('span', { 'class': 'badge ' + (keyState.set ? 'badge--ready' : 'badge--draft'), text: keyState.set ? 'Set' : 'Not set' })
+      ]));
+      var value = h('div', { 'class': 'apikey__value' + (fresh ? ' is-fresh' : ''), text: fresh || (keyState.set ? keyState.masked : 'No key yet. Generate one and paste it into Hermes.') });
+      var actions = h('div', { 'class': 'btn-row' });
+      if (fresh) actions.appendChild(smallBtn('Copy', 'btn--primary', function (e) {
+        var done = function () { e.target.textContent = 'Copied'; setTimeout(function () { e.target.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard) navigator.clipboard.writeText(fresh).then(done, function () { prompt('API key', fresh); }); else prompt('API key', fresh);
+      }));
+      actions.appendChild(smallBtn(keyState.set ? 'Replace' : 'Generate key', keyState.set ? '' : 'btn--primary', function () {
+        if (keyState.set && !confirm('Replace the key? Hermes will stop working until the new key is pasted in.')) return;
+        request('POST', '/api/apikey').then(function (r) { keyState = { set: true, masked: r.masked }; drawKey(r.key); }, function (err) { keyOut.textContent = 'Could not generate: ' + err.message; });
+      }));
+      if (keyState.set) actions.appendChild(smallBtn('Clear', 'btn--danger', function () {
+        if (!confirm('Clear the key? Hermes will no longer be able to call this app.')) return;
+        request('DELETE', '/api/apikey').then(function () { keyState = { set: false, masked: '' }; drawKey(); }, function (err) { keyOut.textContent = 'Could not clear: ' + err.message; });
+      }));
+      keyBox.appendChild(h('div', { 'class': 'apikey__row' }, [value, actions]));
+      if (fresh) keyBox.appendChild(h('div', { 'class': 'field__hint', text: 'This is the only time the full key is shown. Paste it into Hermes now; after that only the ending is visible here.' }));
+    }
+    request('GET', '/api/apikey').then(function (r) { keyState = r; drawKey(); }, function () { drawKey(); });
+    var base = location.origin;
+    var endpoints = h('div', { 'class': 'reply' }, [
+      h('div', { 'class': 'step__sub', text: 'What Hermes can call with that key (send it as Authorization: Bearer <key> or X-API-Key)', style: 'margin-bottom:6px' }),
+      h('pre', { text: [
+        'GET  ' + base + '/api/v1/ping                      → { ok: true }  (check the key)',
+        'GET  ' + base + '/api/v1/campaigns                 → list of campaigns with status',
+        'GET  ' + base + '/api/v1/campaigns/{id}            → full launch payload: prompt, campaign, assets',
+        'POST ' + base + '/api/v1/campaigns/{id}/status     → { status: "launched", message, externalId }',
+        'GET  ' + base + '/api/creatives/{id}               → the image/video bytes (links are in assets[].url)'
+      ].join('\n') })
+    ]);
+
+    return h('div', { 'class': 'card step hermes', id: 'hermesCard' }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: 'H' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Hermes agent' }), h('div', { 'class': 'step__sub', text: 'How this app reaches Hermes. The key is stored on the server and never shown again in full.' })])]),
+      status,
+      h('div', { 'class': 'field-row' }, [field('Hermes URL', url, 'Base address. Paths below are added to it.'), field('API key', key)]),
+      h('div', { 'class': 'field-row' }, [field('Send the key as', auth), field('Launch path', launchPath, 'POST, receives the campaign payload.')]),
+      h('div', { 'class': 'field-row' }, [field('Test method', testMethod), field('Test path', testPath, 'GET calls it plainly; POST sends { prompt: "Connection test…" }.'), field('Public base URL for asset links', publicBase, 'Leave blank to use this site\'s address.')]),
+      h('div', { 'class': 'btn-row' }, [saveBtn, testBtn]),
+      out,
+      h('h3', { 'class': 'card__title', text: 'Key for Hermes to call this app', style: 'margin-top:24px' }),
+      h('p', { 'class': 'muted', text: 'Hermes keeps this key on its side (like its other API keys) and uses it to pull campaigns, prompts, and assets from here, and to report launch status back.', style: 'margin-bottom:12px' }),
+      keyBox, keyOut, endpoints
     ]);
   }
 
@@ -503,10 +634,12 @@
         h('p', { 'class': 'muted', text: campaigns.length ? 'Choose a campaign above or start a new one.' : 'No campaigns yet.' }),
         btn('New campaign', 'btn--primary', createCampaign)
       ]));
+      root.appendChild(hermesCard());
       return;
     }
     [step1, step2, step3, step4, step5, step6, step7, step8, step9].forEach(function (fn) { root.appendChild(fn()); });
     root.appendChild(launchCard());
+    root.appendChild(hermesCard());
   }
 
   function loadList() { return request('GET', API).then(function (list) { campaigns = list || []; }); }

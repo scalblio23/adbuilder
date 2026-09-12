@@ -485,3 +485,23 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .option-row.has-logic { grid-template-columns: 1fr 220px auto; }
 .logic-label { font-size: 12px; color: var(--text-muted); }
 @media (max-width: 700px) { .option-row.has-logic { grid-template-columns: 1fr; } }
+
+/* Hermes config + previews */
+.hermes { border-color: #3d4a63; }
+.hermes .step__num { background: rgba(79, 140, 255, 0.15); border-color: var(--accent); color: var(--accent); }
+.reply { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 12px; font-size: 13px; }
+.reply__meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
+.reply__ok { color: var(--success); }
+.reply__bad { color: var(--danger); }
+.reply pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); }
+.creative__link { position: absolute; bottom: 30px; right: 6px; background: rgba(0,0,0,0.6); border: none; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; opacity: 0; }
+.creative:hover .creative__link { opacity: 1; }
+.creative__link.is-copied { background: var(--success); opacity: 1; }
+
+/* API key block */
+.apikey { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; margin-bottom: 12px; }
+.apikey__head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.apikey__name { font: 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.04em; }
+.apikey__row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.apikey__value { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-muted); word-break: break-all; }
+.apikey__value.is-fresh { color: var(--success); border-color: var(--success); user-select: all; }

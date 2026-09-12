@@ -49,16 +49,35 @@ autosave to the server and are shared with the team.
 
 ## Hermes agent
 
-Launching a campaign and refreshing ad accounts go through the Hermes agent. Connect it in
-the Settings tab (URL and API key, stored on the server) or with the `HERMES_URL` and
-`HERMES_API_KEY` environment variables. Until it is connected, Launch and Refresh explain
-that Hermes is not connected. The request shapes live in `lib/hermes.js` and can be
-adjusted in one place once Hermes publishes its API:
+The Hermes section at the bottom of the Ad Builder page handles both directions.
 
-- `POST {HERMES_URL}/campaigns` receives the campaign payload on launch
-- `GET {HERMES_URL}/ad-accounts` returns accounts to merge into the Ad Accounts tab
+**AdBuilder calling Hermes** (Launch button, Refresh from Hermes, Test connection): enter the
+Hermes URL and API key, choose how the key is sent (Bearer, X-API-Key, or both), and the
+launch and test paths. Launch sends one `POST {url}{launchPath}` with:
 
-Override the paths with `HERMES_LAUNCH_PATH` and `HERMES_ACCOUNTS_PATH` if they differ.
+```json
+{ "prompt": "<plain-language brief of the whole campaign>",
+  "campaign": { ...structured data... },
+  "assets": [ { "name": "hero.png", "type": "image", "url": "https://your-site/api/creatives/<id>" } ],
+  "account": { "client": "...", "company": "...", "link": "..." } }
+```
+
+Preview shows exactly what will be sent. Asset links are public so Hermes can download them;
+set "Public base URL" if the site is reached through a different address than the one users
+open. Environment variables `HERMES_URL`, `HERMES_API_KEY`, `HERMES_AUTH`, `HERMES_LAUNCH_PATH`,
+`HERMES_TEST_PATH`, `HERMES_TEST_METHOD`, and `PUBLIC_BASE_URL` override the saved settings.
+
+**Hermes calling AdBuilder**: generate an `ADBUILDER_API_KEY` in the same section and paste it
+into Hermes. It is shown once and stored hashed. With it, Hermes can call
+(`Authorization: Bearer <key>` or `X-API-Key: <key>`):
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/ping` | Check the key |
+| `GET /api/v1/campaigns` | Campaigns with status |
+| `GET /api/v1/campaigns/{id}` | Full launch payload (prompt, campaign, assets) |
+| `POST /api/v1/campaigns/{id}/status` | Report `{ status, message, externalId }` back |
+| `GET /api/creatives/{id}` | Image or video bytes |
 
 ## Notes
 

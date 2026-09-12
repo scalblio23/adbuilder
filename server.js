@@ -60,7 +60,17 @@ var ROUTES = [
   [/^\/api\/creatives(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? api.creative(req, res, id, body) : api.creatives(req, res, body); }],
   [/^\/api\/settings\/?$/, function (req, res, id, body) { api.settings(req, res, body); }],
   [/^\/api\/hermes\/launch\/?$/, function (req, res, id, body) { api.hermesLaunch(req, res, body); }],
-  [/^\/api\/hermes\/accounts\/?$/, function (req, res, id, body) { api.hermesAccounts(req, res, body); }]
+  [/^\/api\/hermes\/accounts\/?$/, function (req, res, id, body) { api.hermesAccounts(req, res, body); }],
+  [/^\/api\/apikey\/?$/, function (req, res, id, body) { api.apiKey(req, res, body); }],
+  [/^\/api\/v1\/ping\/?$/, function (req, res) { api.inbound.ping(req, res); }],
+  [/^\/api\/v1\/campaigns\/?$/, function (req, res) { api.inbound.campaigns(req, res); }],
+  [/^\/api\/v1\/campaigns\/([^/]+)\/status\/?$/, function (req, res, id, body) { api.inbound.status(req, res, id, body); }],
+  [/^\/api\/v1\/campaigns\/([^/]+)\/?$/, function (req, res, id) { api.inbound.campaign(req, res, id); }],
+  [/^\/api\/hermes\/test\/?$/, function (req, res, id, body) { api.hermesTest(req, res, body); }],
+  [/^\/api\/hermes\/preview\/?$/, function (req, res, id, body) {
+    var q = {}; String(req.url.split('?')[1] || '').split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || ''); });
+    api.hermesPreview(req, res, body, q);
+  }]
 ];
 
 http.createServer(function (req, res) {
