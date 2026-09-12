@@ -542,3 +542,17 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .stars button:hover { color: var(--warning); }
 .swipe__actions { display: flex; gap: 6px; justify-content: space-between; align-items: center; margin-top: 4px; }
 .card__header .btn-row .table__input { width: auto; min-width: 150px; }
+
+/* Swipe file: rows view */
+.swipes--rows { display: flex; flex-direction: column; gap: 6px; }
+.swipe-row { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.swipe-row.is-inactive { opacity: 0.6; }
+.swipe-row__line { display: flex; align-items: center; gap: 12px; padding: 8px 10px; cursor: pointer; }
+.swipe-row__line:hover { background: var(--bg-hover); }
+.swipe-row__thumb { width: 44px; height: 44px; flex-shrink: 0; border-radius: 4px; overflow: hidden; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.swipe-row__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.swipe-row__text { flex: 1; min-width: 0; }
+.swipe-row__sub { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swipe-row__type { position: static; }
+.swipe-row__detail { padding: 4px 14px 14px 66px; font-size: 13px; }
+@media (max-width: 700px) { .swipe-row__line { flex-wrap: wrap; } .swipe-row__detail { padding-left: 14px; } }

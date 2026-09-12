@@ -10,6 +10,20 @@
   var activeSel = document.getElementById('swipeActive');
   var advSel = document.getElementById('swipeAdvertiser');
   var refresh = document.getElementById('swipeRefresh');
+  var viewBtn = document.getElementById('swipeView');
+  var view = 'grid';
+  try { view = localStorage.getItem('adbuilder.swipeView') === 'rows' ? 'rows' : 'grid'; } catch (e) {}
+  function applyView() {
+    grid.classList.toggle('swipes--rows', view === 'rows');
+    viewBtn.textContent = view === 'rows' ? 'Grid' : 'Rows';
+    viewBtn.setAttribute('aria-pressed', String(view === 'rows'));
+  }
+  viewBtn.addEventListener('click', function () {
+    view = view === 'rows' ? 'grid' : 'rows';
+    try { localStorage.setItem('adbuilder.swipeView', view); } catch (e) {}
+    applyView(); render();
+  });
+  applyView();
 
   var items = [];
   var loaded = false;
@@ -120,10 +134,49 @@
     ]);
   }
 
+  function row(item) {
+    var thumb = el('div', { 'class': 'swipe-row__thumb' });
+    var src = item.thumbnailUrl || (item.mediaType !== 'video' ? item.mediaUrl : '');
+    if (src) thumb.appendChild(el('img', { src: src, alt: '', loading: 'lazy' }));
+    else thumb.appendChild(el('span', { text: item.mediaType === 'video' ? '▶' : '🖼' }));
+    var expanded = false;
+    var detail = el('div', { 'class': 'swipe-row__detail' }, [
+      item.copy ? el('div', { 'class': 'rules-text', text: item.copy }) : el('span', { 'class': 'muted', text: 'No copy captured.' }),
+      el('div', { 'class': 'swipe__meta', style: 'margin-top:8px' }, [
+        item.cta ? el('span', { text: 'CTA: ' + item.cta }) : null,
+        item.landingUrl ? el('a', { href: item.landingUrl, target: '_blank', rel: 'noopener', text: 'Landing page ↗' }) : null,
+        el('a', { href: 'https://www.facebook.com/ads/library/?id=' + encodeURIComponent(item.id), target: '_blank', rel: 'noopener', text: 'Library ' + item.id + ' ↗' }),
+        item.startedAt ? el('span', { text: 'Started ' + new Date(item.startedAt).toLocaleDateString() } ) : null
+      ]),
+      item.mediaType === 'video' && item.mediaUrl ? el('video', { src: item.mediaUrl, controls: 'controls', preload: 'none', style: 'max-width:360px;margin-top:8px;display:block' }) : null
+    ]);
+    detail.hidden = true;
+    var wrap = el('div', { 'class': 'swipe-row' + (item.active ? '' : ' is-inactive') });
+    var line = el('div', { 'class': 'swipe-row__line', onclick: function (e) { if (e.target.closest('button, a')) return; expanded = !expanded; detail.hidden = !expanded; wrap.classList.toggle('is-open', expanded); } }, [
+      thumb,
+      el('div', { 'class': 'swipe-row__text' }, [
+        el('div', { 'class': 'swipe__advertiser', text: item.advertiser || 'Unknown advertiser' }),
+        el('div', { 'class': 'swipe-row__sub', text: item.headline || (item.copy || '').split('\n')[0] || '' })
+      ]),
+      el('span', { 'class': 'swipe__type swipe-row__type', text: item.mediaType || 'image' }),
+      el('span', { 'class': 'badge ' + (item.active ? 'badge--live' : 'badge--paused'), text: item.active ? 'Active' : 'Inactive' }),
+      stars(item),
+      el('div', { 'class': 'btn-row' }, [
+        el('button', { type: 'button', 'class': 'btn btn--small', text: item.active ? 'Inactive' : 'Active', title: item.active ? 'Mark inactive' : 'Mark active', onclick: function () { save(item, { active: !item.active }); } }),
+        el('button', { type: 'button', 'class': 'btn btn--small btn--danger', text: 'Delete', onclick: function () {
+          if (!confirm('Delete this creative from the swipe file?')) return;
+          request('DELETE', '/api/swipes/' + item.id).then(load, function (err) { setNotice('error', 'Could not delete: ' + err.message); });
+        } })
+      ])
+    ]);
+    wrap.appendChild(line); wrap.appendChild(detail);
+    return wrap;
+  }
+
   function render() {
     grid.innerHTML = '';
     var list = visible();
-    list.forEach(function (i) { grid.appendChild(card(i)); });
+    list.forEach(function (i) { grid.appendChild(view === 'rows' ? row(i) : card(i)); });
     empty.hidden = !loaded || items.length > 0;
     if (loaded && items.length && !list.length) grid.appendChild(el('p', { 'class': 'muted', text: 'No creatives match these filters.' }));
   }
