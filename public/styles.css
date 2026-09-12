@@ -556,3 +556,13 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .swipe-row__type { position: static; }
 .swipe-row__detail { padding: 4px 14px 14px 66px; font-size: 13px; }
 @media (max-width: 700px) { .swipe-row__line { flex-wrap: wrap; } .swipe-row__detail { padding-left: 14px; } }
+
+/* Swipe file: advertiser groups (rows view) */
+.swipe-group { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.swipe-group__head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: var(--bg-card); border: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.swipe-group__head:hover { background: var(--bg-hover); }
+.swipe-group__caret { display: inline-block; color: var(--text-muted); transition: transform 0.15s; }
+.swipe-group__head.is-open .swipe-group__caret { transform: rotate(90deg); }
+.swipe-group__count { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-muted); }
+.swipe-group__body { display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--bg); }
+.swipe-group__body .swipe-row { border-color: transparent; }

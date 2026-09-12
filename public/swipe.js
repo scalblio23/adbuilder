@@ -25,6 +25,27 @@
   });
   applyView();
 
+  // Collapse the whole list to its header line.
+  var collapseBtn = document.getElementById('swipeCollapse');
+  var collapsed = false;
+  try { collapsed = localStorage.getItem('adbuilder.swipeCollapsed') === '1'; } catch (e) {}
+  function applyCollapsed() {
+    grid.hidden = collapsed;
+    empty.hidden = collapsed || !loaded || items.length > 0;
+    collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+    collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+  }
+  collapseBtn.addEventListener('click', function () {
+    collapsed = !collapsed;
+    try { localStorage.setItem('adbuilder.swipeCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+    applyCollapsed();
+  });
+
+  // Per-advertiser groups in rows view; remembered per advertiser.
+  var closedGroups = {};
+  try { closedGroups = JSON.parse(localStorage.getItem('adbuilder.swipeGroups') || '{}') || {}; } catch (e) {}
+  function rememberGroups() { try { localStorage.setItem('adbuilder.swipeGroups', JSON.stringify(closedGroups)); } catch (e) {} }
+
   var items = [];
   var loaded = false;
 
@@ -173,11 +194,36 @@
     return wrap;
   }
 
+  function group(name, members) {
+    var open = !closedGroups[name];
+    var body = el('div', { 'class': 'swipe-group__body' });
+    members.forEach(function (i) { body.appendChild(row(i)); });
+    body.hidden = !open;
+    var active = members.filter(function (i) { return i.active; }).length;
+    var head = el('button', { type: 'button', 'class': 'swipe-group__head' + (open ? ' is-open' : ''), 'aria-expanded': String(open), onclick: function () {
+      open = !open; body.hidden = !open; head.classList.toggle('is-open', open); head.setAttribute('aria-expanded', String(open));
+      if (open) delete closedGroups[name]; else closedGroups[name] = 1;
+      rememberGroups();
+    } }, [
+      el('span', { 'class': 'swipe-group__caret', text: '▸' }),
+      el('span', { 'class': 'swipe-group__name', text: name }),
+      el('span', { 'class': 'swipe-group__count', text: members.length + (members.length === 1 ? ' creative' : ' creatives') + ', ' + active + ' active' })
+    ]);
+    return el('div', { 'class': 'swipe-group' }, [head, body]);
+  }
+
   function render() {
     grid.innerHTML = '';
     var list = visible();
-    list.forEach(function (i) { grid.appendChild(view === 'rows' ? row(i) : card(i)); });
-    empty.hidden = !loaded || items.length > 0;
+    if (view === 'rows') {
+      var names = [], byName = {};
+      list.forEach(function (i) { var n = i.advertiser || 'Unknown advertiser'; if (!byName[n]) { byName[n] = []; names.push(n); } byName[n].push(i); });
+      names.sort(function (a, b) { return a.localeCompare(b); });
+      names.forEach(function (n) { grid.appendChild(group(n, byName[n])); });
+    } else {
+      list.forEach(function (i) { grid.appendChild(card(i)); });
+    }
+    applyCollapsed();
     if (loaded && items.length && !list.length) grid.appendChild(el('p', { 'class': 'muted', text: 'No creatives match these filters.' }));
   }
 
