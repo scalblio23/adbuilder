@@ -384,10 +384,12 @@
     var d = camp.data;
     var grid = h('div', { 'class': 'creatives' });
     var status = h('div', { 'class': 'progress' });
+    function shown() { return library.filter(function (c) { return c.source !== 'meta_ad_library' || d.creativeIds.indexOf(c.id) !== -1; }); }
     function drawGrid() {
       grid.innerHTML = '';
-      if (!library.length) grid.appendChild(h('p', { 'class': 'muted', text: 'No creatives yet. Upload a file or add one by URL below.' }));
-      library.forEach(function (c) {
+      var list = shown();
+      if (!list.length) grid.appendChild(h('p', { 'class': 'muted', text: 'No creatives yet. Upload a file, add one by URL, or pick from the swipe file.' }));
+      list.forEach(function (c) {
         var on = d.creativeIds.indexOf(c.id) !== -1;
         var thumb;
         if (/^image\//.test(c.mime || '')) thumb = h('img', { 'class': 'creative__thumb', src: '/api/creatives/' + c.id, alt: c.name, loading: 'lazy' });
@@ -407,15 +409,15 @@
             if (navigator.clipboard) navigator.clipboard.writeText(link).then(done, function () { prompt('Shareable link', link); });
             else prompt('Shareable link', link);
           } }),
-          h('button', { type: 'button', 'class': 'creative__del', text: '✕', title: 'Delete from library', onclick: function (e) {
+          h('button', { type: 'button', 'class': 'creative__del', text: '✕', title: c.source === 'meta_ad_library' ? 'Remove from this campaign (stays in the swipe file)' : 'Delete from library', onclick: function (e) {
             e.stopPropagation();
-            if (!confirm('Delete "' + c.name + '" from the creative library?')) return;
-            request('DELETE', '/api/creatives/' + c.id).then(function () {
-              library = library.filter(function (x) { return x.id !== c.id; });
-              d.creativeIds = d.creativeIds.filter(function (id) { return id !== c.id; });
-              drawGrid(); dirty(); refreshAdSets();
-            }, function (err) { status.textContent = 'Could not delete: ' + err.message; });
+            d.creativeIds = d.creativeIds.filter(function (id) { return id !== c.id; });
+            if (c.source === 'meta_ad_library') { drawGrid(); dirty(); refreshAdSets(); return; }
+            library = library.filter(function (x) { return x.id !== c.id; });
+            drawGrid(); dirty(); refreshAdSets();
+            request('DELETE', '/api/creatives/' + c.id).then(null, function (err) { status.textContent = 'Could not delete "' + c.name + '": ' + err.message; loadRefs().then(drawGrid); });
           } }),
+          c.source === 'meta_ad_library' ? h('span', { 'class': 'creative__tag', text: 'Swipe' }) : null,
           h('div', { 'class': 'creative__name', text: c.name })
         ]);
         grid.appendChild(tile);
@@ -445,7 +447,9 @@
           }).then(function (base64) {
             return request('POST', '/api/creatives', { name: file.name, mime: file.type, data: base64 });
           }).then(function (row) {
-            library.push(row); d.creativeIds.push(row.id); done++;
+            if (!library.some(function (x) { return x.id === row.id; })) library.push(row);
+            if (d.creativeIds.indexOf(row.id) === -1) d.creativeIds.push(row.id);
+            done++;
             status.textContent = 'Uploading ' + Math.min(done + 1, list.length) + ' of ' + list.length + '…';
             drawGrid(); dirty(); refreshAdSets();
           });
@@ -460,13 +464,56 @@
     var addUrl = smallBtn('Add by URL', 'btn--primary', function () {
       if (!urlName.value.trim() || !urlValue.value.trim()) { status.textContent = 'Give the creative a name and a URL.'; return; }
       request('POST', '/api/creatives', { name: urlName.value.trim(), url: urlValue.value.trim(), mime: /\.(mp4|mov|webm)(\?|$)/i.test(urlValue.value) ? 'video/link' : /\.(png|jpe?g|gif|webp)(\?|$)/i.test(urlValue.value) ? 'image/link' : '' })
-        .then(function (row) { library.push(row); d.creativeIds.push(row.id); urlName.value = ''; urlValue.value = ''; status.textContent = 'Added.'; drawGrid(); dirty(); refreshAdSets(); },
+        .then(function (row) {
+          if (!library.some(function (x) { return x.id === row.id; })) library.push(row);
+          if (d.creativeIds.indexOf(row.id) === -1) d.creativeIds.push(row.id);
+          urlName.value = ''; urlValue.value = ''; status.textContent = 'Added.'; drawGrid(); dirty(); refreshAdSets(); },
           function (err) { status.textContent = 'Could not add: ' + err.message; });
     });
     var byUrl = h('div', {}, [field('Name', urlName), field('URL', urlValue), addUrl]);
 
+    // Pick creatives from the swipe file
+    var swipeBtn = btn('Add from swipe file', '', function () {
+      var overlay = h('div', { 'class': 'picker' });
+      var list = h('div', { 'class': 'picker__list' }, [h('p', { 'class': 'muted', text: 'Loading swipe file…' })]);
+      var close = function () { overlay.remove(); document.removeEventListener('keydown', onKey); };
+      var onKey = function (e) { if (e.key === 'Escape') close(); };
+      document.addEventListener('keydown', onKey);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+      overlay.appendChild(h('div', { 'class': 'picker__panel' }, [
+        h('div', { 'class': 'picker__head' }, [h('h3', { 'class': 'card__title', text: 'Add from swipe file', style: 'margin:0' }), smallBtn('Close', '', close)]),
+        h('p', { 'class': 'field__hint', text: 'Click a creative to add it to this campaign. #1 is the top-left ad in the Meta Ad Library.', style: 'margin:0 0 10px' }),
+        list
+      ]));
+      document.body.appendChild(overlay);
+      Promise.all([request('GET', '/api/swipes'), request('GET', '/api/creatives')]).then(function (r) {
+        library = r[1] || library;
+        var swipes = (r[0] || []).filter(function (sw) { return sw.mediaCreativeId; });
+        list.innerHTML = '';
+        if (!swipes.length) { list.appendChild(h('p', { 'class': 'muted', text: 'The swipe file is empty.' })); return; }
+        swipes.forEach(function (sw) {
+          var added = d.creativeIds.indexOf(sw.mediaCreativeId) !== -1;
+          var thumb = sw.thumbnailUrl || (sw.mediaType !== 'video' ? sw.mediaUrl : '');
+          var item = h('button', { type: 'button', 'class': 'picker__item' + (added ? ' is-added' : '') }, [
+            thumb ? h('img', { src: thumb, alt: '' }) : h('span', { 'class': 'picker__icon', text: sw.mediaType === 'video' ? '▶' : '🖼' }),
+            h('span', { 'class': 'pos' + (sw.libraryPosition === 1 ? ' pos--top' : sw.libraryPosition && sw.libraryPosition <= 3 ? ' pos--high' : sw.libraryPosition ? '' : ' pos--none'), text: '#' + (sw.libraryPosition || '?') }),
+            h('span', { 'class': 'picker__text' }, [h('strong', { text: sw.advertiser || 'Unknown advertiser' }), h('span', { text: sw.headline || (sw.copy || '').split('\n')[0] || sw.mediaType })]),
+            h('span', { 'class': 'picker__state', text: added ? 'Added' : 'Add' })
+          ]);
+          item.addEventListener('click', function () {
+            var k = d.creativeIds.indexOf(sw.mediaCreativeId);
+            if (k === -1) d.creativeIds.push(sw.mediaCreativeId); else d.creativeIds.splice(k, 1);
+            item.classList.toggle('is-added', k === -1);
+            item.lastChild.textContent = k === -1 ? 'Added' : 'Add';
+            drawGrid(); dirty(); refreshAdSets();
+          });
+          list.appendChild(item);
+        });
+      }, function (err) { list.innerHTML = ''; list.appendChild(h('p', { 'class': 'muted', text: 'Could not load the swipe file: ' + err.message })); });
+    });
+
     return step(6, 'Creative upload or selection', 'Tick the creatives this campaign uses. Each ticked creative becomes one ad.', [
-      grid, h('div', { 'class': 'upload' }, [drop, byUrl]), status
+      grid, h('div', { 'class': 'btn-row', style: 'margin-bottom:14px' }, [swipeBtn]), h('div', { 'class': 'upload' }, [drop, byUrl]), status
     ]);
   }
 
