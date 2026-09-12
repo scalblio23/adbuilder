@@ -10,6 +10,21 @@
   var activeSel = document.getElementById('swipeActive');
   var advSel = document.getElementById('swipeAdvertiser');
   var refresh = document.getElementById('swipeRefresh');
+  var sortSel = document.getElementById('swipeSort');
+  try { sortSel.value = localStorage.getItem('adbuilder.swipeSort') || 'position'; } catch (e) {}
+  sortSel.addEventListener('change', function () { try { localStorage.setItem('adbuilder.swipeSort', sortSel.value); } catch (e) {} render(); });
+  function sorted(list) {
+    var out = list.slice();
+    if (sortSel.value === 'ranking') out.sort(function (a, b) { return (b.ranking - a.ranking) || ((a.libraryPosition || 1e9) - (b.libraryPosition || 1e9)); });
+    else if (sortSel.value === 'newest') out.sort(function (a, b) { return (b.firstSeenAt || b.createdAt || 0) - (a.firstSeenAt || a.createdAt || 0); });
+    else out.sort(function (a, b) { return ((a.libraryPosition || 1e9) - (b.libraryPosition || 1e9)) || (b.ranking - a.ranking); });
+    return out;
+  }
+  function positionBadge(item, cls) {
+    if (!item.libraryPosition) return el('span', { 'class': 'pos pos--none ' + (cls || ''), text: '#?', title: 'Ad Library position not recorded' });
+    var when = item.positionSeenAt ? ' on ' + new Date(item.positionSeenAt).toLocaleDateString() : '';
+    return el('span', { 'class': 'pos' + (item.libraryPosition === 1 ? ' pos--top' : item.libraryPosition <= 3 ? ' pos--high' : '') + ' ' + (cls || ''), text: '#' + item.libraryPosition, title: 'Position ' + item.libraryPosition + ' in the Meta Ad Library' + when + '. #1 is the top-left, usually the best performer.' });
+  }
   var viewBtn = document.getElementById('swipeView');
   var view = 'grid';
   try { view = localStorage.getItem('adbuilder.swipeView') === 'rows' ? 'rows' : 'grid'; } catch (e) {}
@@ -129,6 +144,7 @@
       box.appendChild(el('div', { 'class': 'creative__thumb creative__thumb--icon', text: '🖼' }));
     }
     box.appendChild(el('span', { 'class': 'swipe__type', text: item.mediaType || 'image' }));
+    box.appendChild(positionBadge(item, 'pos--media'));
     box.appendChild(el('span', { 'class': 'badge swipe__status ' + (item.active ? 'badge--live' : 'badge--paused'), text: item.active ? 'Active' : 'Inactive' }));
     return box;
   }
@@ -149,6 +165,7 @@
       mediaFor(item),
       el('div', { 'class': 'swipe__body' }, [
         el('div', { 'class': 'swipe__advertiser' }, [el('span', { text: item.advertiser || 'Unknown advertiser' }), savedAt(item)]),
+        item.libraryPosition ? el('div', { 'class': 'swipe__posline', text: 'Ad Library position ' + item.libraryPosition + (item.positionSeenAt ? ' (seen ' + new Date(item.positionSeenAt).toLocaleDateString() + ')' : '') }) : null,
         item.headline ? el('div', { 'class': 'swipe__headline', text: item.headline }) : null,
         item.copy ? copy : null,
         el('div', { 'class': 'swipe__meta' }, [
@@ -191,6 +208,7 @@
     detail.hidden = true;
     var wrap = el('div', { 'class': 'swipe-row' + (item.active ? '' : ' is-inactive') });
     var line = el('div', { 'class': 'swipe-row__line', onclick: function (e) { if (e.target.closest('button, a')) return; expanded = !expanded; detail.hidden = !expanded; wrap.classList.toggle('is-open', expanded); } }, [
+      positionBadge(item, 'pos--row'),
       thumb,
       el('div', { 'class': 'swipe-row__text' }, [
         el('div', { 'class': 'swipe__advertiser' }, [el('span', { text: item.advertiser || 'Unknown advertiser' }), savedAt(item)]),
@@ -232,7 +250,7 @@
 
   function render() {
     grid.innerHTML = '';
-    var list = visible();
+    var list = sorted(visible());
     if (view === 'rows') {
       var names = [], byName = {};
       list.forEach(function (i) { var n = i.advertiser || 'Unknown advertiser'; if (!byName[n]) { byName[n] = []; names.push(n); } byName[n].push(i); });

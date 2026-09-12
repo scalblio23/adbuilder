@@ -571,3 +571,12 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .swipe-group__bar { display: flex; align-items: center; background: var(--bg-card); }
 .swipe-group__bar .swipe-group__head { flex: 1; }
 .swipe-group__delete { margin-right: 8px; flex-shrink: 0; }
+
+/* Ad Library position badge */
+.pos { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 24px; padding: 0 8px; border-radius: 6px; font-weight: 700; font-size: 13px; background: var(--bg-hover); color: var(--text); font-variant-numeric: tabular-nums; }
+.pos--top { background: #f5b301; color: #1a1a1a; }
+.pos--high { background: #d9d9d9; color: #1a1a1a; }
+.pos--none { color: var(--text-muted); font-weight: 500; }
+.pos--media { position: absolute; bottom: 8px; left: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+.pos--row { flex-shrink: 0; }
+.swipe__posline { font-size: 12px; color: var(--text-muted); }

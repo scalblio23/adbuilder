@@ -73,8 +73,12 @@ metadata with `PUT /api/v1/swipes`:
 { "items": [ { "libraryId": "1234567890123", "advertiser": "Nike", "mediaType": "image",
   "mediaUrl": "https://your-site/api/creatives/<id>", "mediaHash": "<sha256 from the upload>",
   "thumbnailUrl": "", "copy": "…", "headline": "…", "cta": "Shop now",
-  "landingUrl": "https://…", "ranking": 4, "startedAt": "2026-08-01", "active": true } ] }
+  "landingUrl": "https://…", "ranking": 4, "libraryPosition": 1, "startedAt": "2026-08-01", "active": true } ] }
 ```
+
+`libraryPosition` is where the ad sat in the Ad Library results when Hermes saw it (1 = top-left,
+usually the best performer). The page shows it as a badge, sorts by it by default, and records
+when it was last observed.
 
 Records are stored in the `documents` table (collection `swipes`, id = Library ID) with first
 and last seen timestamps. Duplicates are handled two ways: the same Library ID updates the
