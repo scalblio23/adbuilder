@@ -511,3 +511,4 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .advanced { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
 .advanced summary { cursor: pointer; color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
 .advanced summary:hover { color: var(--text); }
+.notice .btn { margin-left: auto; }

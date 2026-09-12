@@ -642,6 +642,15 @@
     var keyState = { set: false, masked: '' };
     var keyBox = h('div', { 'class': 'apikey' });
     var keyOut = h('div', {});
+    var seen = h('div', { 'class': 'notice' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Checking…' }), smallBtn('Check again', '', function () { loadSeen(); })]);
+    function showSeen() {
+      var ok = !!keyState.lastSeenAt;
+      seen.className = 'notice' + (ok ? ' notice--ok' : '');
+      seen.children[1].textContent = ok
+        ? 'Connected. Hermes last called this app ' + new Date(keyState.lastSeenAt).toLocaleString() + ' (' + keyState.lastPath + ').'
+        : (keyState.set ? 'Waiting for Hermes. Ask Hermes to call GET ' + location.origin + '/api/v1/ping with the key, then press Check again.' : 'Generate a key first.');
+    }
+    function loadSeen() { request('GET', '/api/apikey').then(function (r) { keyState = r; showSeen(); }, function () {}); }
     function drawKey(fresh) {
       keyBox.innerHTML = '';
       keyBox.appendChild(h('div', { 'class': 'apikey__head' }, [
@@ -656,16 +665,17 @@
       }));
       actions.appendChild(smallBtn(keyState.set ? 'Replace' : 'Generate key', keyState.set ? '' : 'btn--primary', function () {
         if (keyState.set && !confirm('Replace the key? Hermes will stop working until the new key is pasted in.')) return;
-        request('POST', '/api/apikey').then(function (r) { keyState = { set: true, masked: r.masked }; drawKey(r.key); }, function (err) { keyOut.textContent = 'Could not generate: ' + err.message; });
+        request('POST', '/api/apikey').then(function (r) { keyState = { set: true, masked: r.masked, lastSeenAt: null, lastPath: '' }; drawKey(r.key); showSeen(); }, function (err) { keyOut.textContent = 'Could not generate: ' + err.message; });
       }));
       if (keyState.set) actions.appendChild(smallBtn('Clear', 'btn--danger', function () {
         if (!confirm('Clear the key? Hermes will no longer be able to call this app.')) return;
-        request('DELETE', '/api/apikey').then(function () { keyState = { set: false, masked: '' }; drawKey(); }, function (err) { keyOut.textContent = 'Could not clear: ' + err.message; });
+        request('DELETE', '/api/apikey').then(function () { keyState = { set: false, masked: '', lastSeenAt: null, lastPath: '' }; drawKey(); showSeen(); }, function (err) { keyOut.textContent = 'Could not clear: ' + err.message; });
       }));
       keyBox.appendChild(h('div', { 'class': 'apikey__row' }, [value, actions]));
       if (fresh) keyBox.appendChild(h('div', { 'class': 'field__hint', text: 'This is the only time the full key is shown. Paste it into Hermes now; after that only the ending is visible here.' }));
     }
-    request('GET', '/api/apikey').then(function (r) { keyState = r; drawKey(); }, function () { drawKey(); });
+    request('GET', '/api/apikey').then(function (r) { keyState = r; drawKey(); showSeen(); }, function () { drawKey(); showSeen(); });
+    var seenTimer = setInterval(function () { if (document.contains(seen) && !document.hidden) loadSeen(); else if (!document.contains(seen)) clearInterval(seenTimer); }, 10000);
     var base = location.origin;
     var endpoints = h('div', { 'class': 'reply' }, [
       h('div', { 'class': 'step__sub', text: 'What Hermes can call with that key (send it as Authorization: Bearer <key> or X-API-Key)', style: 'margin-bottom:6px' }),
@@ -692,7 +702,7 @@
 
     return h('div', { 'class': 'card step hermes', id: 'hermesCard' }, [
       h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: 'H' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Hermes access token' }), h('div', { 'class': 'step__sub', text: 'Generate a token, paste it into Hermes. Hermes then pulls campaigns, prompts, and assets from here and reports launch status back.' })])]),
-      keyBox, keyOut, endpoints,
+      keyBox, keyOut, seen, endpoints,
       advanced
     ]);
   }
