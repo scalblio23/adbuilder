@@ -55,6 +55,9 @@ It uses an OpenAI API key from platform.openai.com, entered under AI settings at
 Ad Builder (or the `OPENAI_API_KEY` environment variable; `OPENAI_MODEL` sets the default model).
 The key stays on the server. Usage is billed per request to your OpenAI account.
 
+The rules that decide what the AI reads and writes (for example, headlines derive from the
+primary text already typed) are listed in `AI_RULES.md` and inside the AI settings card.
+
 ## Hermes agent
 
 The Hermes section at the bottom of the Ad Builder page handles both directions.

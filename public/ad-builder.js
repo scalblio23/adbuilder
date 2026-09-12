@@ -11,6 +11,16 @@
   var OBJECTIVES = [['leads', 'Leads'], ['sales', 'Sales'], ['traffic', 'Traffic'], ['engagement', 'Engagement'], ['app', 'App promotion'], ['awareness', 'Awareness']];
   var EVENTS = ['Lead', 'Purchase', 'CompleteRegistration', 'Contact', 'SubmitApplication', 'Schedule', 'Subscribe', 'AddToCart', 'InitiateCheckout', 'ViewContent', 'Custom'];
 
+  // Keep in step with AI_RULES.md in the repo.
+  var AI_RULES = [
+    'Generate under Headlines derives headlines from the primary text already filled in step 1.',
+    'If step 1 is empty, the Headlines button falls back to the brief from "Let AI build".',
+    'Generate under Ad copy derives copy from the headlines already filled in step 2, else the brief.',
+    'If neither the source step nor the brief has content, the button asks for input instead of guessing.',
+    '"Let AI build" always works from the brief and keeps existing structure, replacing only copy and headlines.',
+    'Generated items are appended, never replacing what you typed. Delete what you don\'t want.',
+    'Everything generated stays editable and is never sent to Hermes without being visible in the steps first.'
+  ];
   var campaigns = [];      // [{id, name, status}]
   var camp = null;         // the loaded campaign {id, name, status, data}
   var accounts = [];       // ad accounts for step 5
@@ -244,20 +254,22 @@
       aiReady ? null : h('p', { 'class': 'field__hint', text: 'Add an OpenAI API key under AI settings at the bottom of this page to enable this.', style: 'margin-top:8px' })
     ]);
   }
+  var generateMsg = '';
   function generateButton(kind, stepNum) {
     var out = h('span', { 'class': 'field__hint' });
+    var hint = kind === 'headlines' ? 'Derived from your primary text in step 1 (or the brief if step 1 is empty).' : 'Derived from your headlines in step 2 (or the brief if step 2 is empty).';
     var b = smallBtn('✦ Generate with AI', '', function () {
-      var brief = (camp.data.brief || '').trim();
-      if (!brief) { out.textContent = 'Write a brief in "Let AI build" at the top first.'; return; }
       b.disabled = true; out.textContent = 'Writing…';
-      aiCall(kind, brief).then(function (j) {
+      aiCall(kind, (camp.data.brief || '').trim()).then(function (j) {
         var list = camp.data[kind];
         if (list.length === 1 && !list[0].trim()) list.length = 0;
         (j.items || []).forEach(function (i) { list.push(i); });
+        generateMsg = 'Added ' + (j.items || []).length + ' from your ' + (j.source || 'brief') + '.';
         dirty();
         var el = root.querySelector('#step-' + stepNum); if (el) el.replaceWith(stepNum === 1 ? step1() : step2());
       }, function (err) { out.textContent = err.message; b.disabled = false; });
     });
+    out.textContent = generateMsg || hint; generateMsg = '';
     return h('div', { 'class': 'btn-row', style: 'margin-top:8px' }, [b, out]);
   }
 
@@ -848,7 +860,11 @@
       status,
       h('div', { 'class': 'field-row' }, [field('OpenAI API key', key), field('Model', model, 'Leave blank for the default.')]),
       h('div', { 'class': 'btn-row' }, [saveBtn, testBtn, clearBtn]),
-      out
+      out,
+      h('details', { 'class': 'advanced' }, [
+        h('summary', { text: 'The AI rules (also in AI_RULES.md in the repo)' }),
+        h('ol', { 'class': 'rules' }, AI_RULES.map(function (r) { return h('li', { text: r }); }))
+      ])
     ]);
   }
 

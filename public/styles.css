@@ -516,3 +516,5 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 /* AI cards */
 .ai { border-color: #4a3d63; }
 .ai .step__num { background: rgba(167, 139, 250, 0.15); border-color: #a78bfa; color: #a78bfa; }
+.rules { margin: 0; padding-left: 20px; color: var(--text-muted); font-size: 13px; }
+.rules li { margin: 4px 0; }
