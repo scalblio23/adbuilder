@@ -18,6 +18,7 @@
   var meta = { adAccounts: { items: [], syncedAt: null }, pixels: { items: [], syncedAt: null }, pages: { items: [], syncedAt: null } };   // synced from Hermes
   var saveTimer = null;
   var saveState = null;    // element showing Saved / Saving
+  var aiReady = false;     // an OpenAI key is saved
 
   // ---------- tiny DOM helpers ----------
   function h(tag, attrs, children) {
@@ -98,6 +99,7 @@
   // ---------- campaign data ----------
   function defaults() {
     return {
+      brief: '',
       copy: [''], headlines: [''],
       destination: 'landing', landingUrl: '',
       targeting: { locations: '', ageMin: 18, ageMax: 65, gender: 'all', mode: 'advantage', interests: '' },
@@ -185,8 +187,82 @@
     return h('div', {}, [wrap, smallBtn('+ Add another', '', function () { items.push(''); draw(); dirty(); onChange && onChange(); })]);
   }
 
-  function step1() { return step(1, 'Ad copy', 'Primary text shown above the creative. Add variants to test different angles.', [stringList(camp.data.copy, 'Write the ad copy…', null, true)]); }
-  function step2() { return step(2, 'Headlines', 'Short and specific. Meta shows up to five per ad.', [stringList(camp.data.headlines, 'Headline')]); }
+  // ---------- AI ----------
+  function aiCall(what, brief) {
+    return save().then(function () {
+      return fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: camp.id, brief: brief, what: what }) });
+    }).then(function (res) { return res.json().then(function (j) { if (!res.ok) throw new Error(j.error || ('Server returned ' + res.status)); return j; }); });
+  }
+  function applyBuild(r) {
+    var d = camp.data;
+    if (r.campaignName && (!camp.name || /^(New|Untitled) campaign$/i.test(camp.name))) camp.name = String(r.campaignName).slice(0, 200);
+    if (Array.isArray(r.copy) && r.copy.length) d.copy = r.copy.map(String);
+    if (Array.isArray(r.headlines) && r.headlines.length) d.headlines = r.headlines.map(String);
+    if (r.targeting && typeof r.targeting === 'object') {
+      var t = r.targeting;
+      if (t.locations) d.targeting.locations = String(t.locations);
+      if (t.ageMin) d.targeting.ageMin = Math.max(13, Math.min(65, Number(t.ageMin) || 18));
+      if (t.ageMax) d.targeting.ageMax = Math.max(13, Math.min(65, Number(t.ageMax) || 65));
+      if (['all', 'men', 'women'].indexOf(t.gender) !== -1) d.targeting.gender = t.gender;
+      if (['advantage', 'detailed'].indexOf(t.mode) !== -1) d.targeting.mode = t.mode;
+      if (t.interests) d.targeting.interests = String(t.interests);
+    }
+    if (r.leadForm && typeof r.leadForm === 'object') {
+      var f = r.leadForm;
+      if (f.greetingHeadline) d.leadForm.greetingHeadline = String(f.greetingHeadline);
+      if (f.greetingDesc) d.leadForm.greetingDesc = String(f.greetingDesc);
+      if (Array.isArray(f.questions) && f.questions.length && !d.leadForm.questions.length) {
+        d.leadForm.questions = f.questions.slice(0, 6).map(function (q) {
+          return { id: uid(), type: q.type === 'short' ? 'short' : 'multi', text: String(q.text || ''), options: (q.options || []).slice(0, 6).map(function (o) { return { text: String(o), next: '' }; }), next: '' };
+        });
+      }
+      if (f.thanksHeadline) d.leadForm.thanks.headline = String(f.thanksHeadline);
+      if (f.thanksDesc) d.leadForm.thanks.desc = String(f.thanksDesc);
+    }
+    if (Array.isArray(r.adSetNames) && r.adSetNames.length && !d.adSets.length) {
+      d.adSets = r.adSetNames.slice(0, 3).map(function (n) { return { id: uid(), name: String(n).slice(0, 80), creativeIds: d.creativeIds.slice(), useCampaignTargeting: true, targeting: merge(defaults().targeting, d.targeting) }; });
+    }
+  }
+  function aiCard() {
+    var d = camp.data;
+    var briefInput = area(d.brief, 'What are you advertising, to whom, and what is the offer? e.g. "Kitchen renovations in Sydney for homeowners 35-60, free design consult, book a call."', function (v) { d.brief = v; }, 3);
+    var out = h('div', { 'class': 'progress' });
+    var build = btn('Let AI build', 'btn--primary', function () {
+      if (!d.brief.trim()) { out.textContent = 'Write a short brief first.'; briefInput.focus(); return; }
+      build.disabled = true; out.textContent = 'Writing the campaign… this takes 10–30 seconds.';
+      aiCall('all', d.brief).then(function (j) {
+        applyBuild(j.result || {});
+        dirty();
+        renderAll();
+        var card = root.querySelector('#aiCard .progress'); if (card) card.textContent = 'Done. Copy, headlines, targeting, lead form, and ad sets were filled in. Review and edit anything below.';
+      }, function (err) { out.textContent = err.message; build.disabled = false; });
+    });
+    return h('div', { 'class': 'card step ai', id: 'aiCard' }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: '✦' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Let AI build' }), h('div', { 'class': 'step__sub', text: 'Describe the campaign in a few lines. AI drafts the copy, headlines, targeting, lead form, and ad sets into the steps below, ready for you to edit.' })])]),
+      field('Brief', briefInput),
+      h('div', { 'class': 'btn-row' }, [build, out]),
+      aiReady ? null : h('p', { 'class': 'field__hint', text: 'Add an OpenAI API key under AI settings at the bottom of this page to enable this.', style: 'margin-top:8px' })
+    ]);
+  }
+  function generateButton(kind, stepNum) {
+    var out = h('span', { 'class': 'field__hint' });
+    var b = smallBtn('✦ Generate with AI', '', function () {
+      var brief = (camp.data.brief || '').trim();
+      if (!brief) { out.textContent = 'Write a brief in "Let AI build" at the top first.'; return; }
+      b.disabled = true; out.textContent = 'Writing…';
+      aiCall(kind, brief).then(function (j) {
+        var list = camp.data[kind];
+        if (list.length === 1 && !list[0].trim()) list.length = 0;
+        (j.items || []).forEach(function (i) { list.push(i); });
+        dirty();
+        var el = root.querySelector('#step-' + stepNum); if (el) el.replaceWith(stepNum === 1 ? step1() : step2());
+      }, function (err) { out.textContent = err.message; b.disabled = false; });
+    });
+    return h('div', { 'class': 'btn-row', style: 'margin-top:8px' }, [b, out]);
+  }
+
+  function step1() { return step(1, 'Ad copy', 'Primary text shown above the creative. Add variants to test different angles.', [stringList(camp.data.copy, 'Write the ad copy…', null, true), generateButton('copy', 1)]); }
+  function step2() { return step(2, 'Headlines', 'Short and specific. Meta shows up to five per ad.', [stringList(camp.data.headlines, 'Headline'), generateButton('headlines', 2)]); }
 
   function step3() {
     var d = camp.data;
@@ -733,6 +809,49 @@
     ]);
   }
 
+  // ---------- AI settings (bottom of the page) ----------
+  function aiSettingsCard() {
+    var cfg = { apiKeyMasked: '', model: '', defaultModel: '', ready: false, source: 'settings' };
+    var status = h('div', { 'class': 'notice' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Loading…' })]);
+    function setStatus(kind, t) { status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = t; }
+    var key = h('input', { 'class': 'table__input', type: 'password', autocomplete: 'off', id: 'openaiKey', placeholder: 'sk-…' });
+    var model = h('input', { 'class': 'table__input', id: 'openaiModel', placeholder: 'gpt-5-mini' });
+    var out = h('div', {});
+    function fill() {
+      key.value = ''; key.placeholder = cfg.apiKeyMasked ? 'Saved key ' + cfg.apiKeyMasked + ' (paste a new one to replace)' : 'sk-… from platform.openai.com';
+      model.value = cfg.model || ''; model.placeholder = cfg.defaultModel || 'gpt-5-mini';
+      aiReady = !!cfg.ready;
+      var locked = cfg.source === 'env';
+      key.disabled = model.disabled = saveBtn.disabled = locked;
+      setStatus(cfg.ready ? 'ok' : '', cfg.ready ? 'AI is connected' + (locked ? ' (key set through the host environment).' : '. Press Test to check it answers.') : 'Not connected. Paste an OpenAI API key and save.');
+      var hint = root.querySelector('#aiCard .field__hint'); if (hint && cfg.ready) hint.remove();
+    }
+    var saveBtn = btn('Save', 'btn--primary', function () {
+      saveBtn.disabled = true;
+      request('PUT', '/api/ai/settings', { apiKey: key.value.trim(), model: model.value.trim() }).then(function (c) { cfg = c; fill(); setStatus(cfg.ready ? 'ok' : '', cfg.ready ? 'Saved. Press Test to check it answers.' : 'Saved, but no key yet.'); }, function (err) { setStatus('error', 'Could not save: ' + err.message); }).then(function () { saveBtn.disabled = cfg.source === 'env'; });
+    });
+    var testBtn = btn('Test', '', function () {
+      out.innerHTML = ''; testBtn.disabled = true; out.appendChild(h('p', { 'class': 'progress', text: 'Asking the model…' }));
+      (key.value.trim() ? request('PUT', '/api/ai/settings', { apiKey: key.value.trim(), model: model.value.trim() }).then(function (c) { cfg = c; fill(); }) : Promise.resolve())
+        .then(function () { return fetch('/api/ai/test', { method: 'POST' }); })
+        .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, body: j }; }); })
+        .then(function (r) { out.innerHTML = ''; out.appendChild(replyBox(r.ok ? 'The model replied' : 'Test failed', r.ok ? { body: r.body.reply, ok: true, status: 200 } : { error: r.body.error })); }, function (err) { out.innerHTML = ''; out.appendChild(replyBox('Test failed', { error: err.message })); })
+        .then(function () { testBtn.disabled = false; });
+    });
+    var clearBtn = smallBtn('Remove key', 'btn--danger', function () {
+      if (!confirm('Remove the saved OpenAI key?')) return;
+      request('PUT', '/api/ai/settings', { clearApiKey: true }).then(function (c) { cfg = c; fill(); }, function (err) { setStatus('error', err.message); });
+    });
+    request('GET', '/api/ai/settings').then(function (c) { cfg = c; fill(); }, function (err) { setStatus('error', 'Could not load AI settings: ' + err.message); });
+    return h('div', { 'class': 'card step ai', id: 'aiSettings' }, [
+      h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: '✦' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'AI settings' }), h('div', { 'class': 'step__sub', text: 'Powers "Let AI build" and the Generate buttons. Uses an OpenAI API key from platform.openai.com, billed per use to your OpenAI account. The key stays on the server.' })])]),
+      status,
+      h('div', { 'class': 'field-row' }, [field('OpenAI API key', key), field('Model', model, 'Leave blank for the default.')]),
+      h('div', { 'class': 'btn-row' }, [saveBtn, testBtn, clearBtn]),
+      out
+    ]);
+  }
+
   // ---------- assembly ----------
   function renderAll() {
     root.innerHTML = '';
@@ -742,17 +861,21 @@
         h('p', { 'class': 'muted', text: campaigns.length ? 'Choose a campaign above or start a new one.' : 'No campaigns yet.' }),
         btn('New campaign', 'btn--primary', createCampaign)
       ]));
+      root.appendChild(aiSettingsCard());
       root.appendChild(hermesCard());
       return;
     }
+    root.appendChild(aiCard());
     [step1, step2, step3, step4, step5, step6, step7, step8, step9].forEach(function (fn) { root.appendChild(fn()); });
     root.appendChild(launchCard());
+    root.appendChild(aiSettingsCard());
     root.appendChild(hermesCard());
   }
 
   function loadList() { return request('GET', API).then(function (list) { campaigns = list || []; }); }
   function loadRefs() {
     return Promise.all([
+      request('GET', '/api/ai/settings').then(function (c) { aiReady = !!(c && c.ready); }, function () {}),
       request('GET', '/api/ad-accounts').then(function (l) { accounts = l || []; }, function () { accounts = []; }),
       request('GET', '/api/creatives').then(function (l) { library = l || []; }, function () { library = []; }),
       request('GET', '/api/meta').then(function (m) { if (m) meta = m; }, function () {})

@@ -47,6 +47,14 @@ builder (greeting, custom questions with conditional logic, contact details, pri
 thank-you page), and landing page settings (pixel, conversion objective and event). Drafts
 autosave to the server and are shared with the team.
 
+## AI brain
+
+"Let AI build" at the top of Ad Builder turns a short brief into copy, headlines, targeting,
+lead form questions, and ad set names, all editable. Steps 1 and 2 also have Generate buttons.
+It uses an OpenAI API key from platform.openai.com, entered under AI settings at the bottom of
+Ad Builder (or the `OPENAI_API_KEY` environment variable; `OPENAI_MODEL` sets the default model).
+The key stays on the server. Usage is billed per request to your OpenAI account.
+
 ## Hermes agent
 
 The Hermes section at the bottom of the Ad Builder page handles both directions.

@@ -512,3 +512,7 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .advanced summary { cursor: pointer; color: var(--text-muted); font-size: 13px; margin-bottom: 12px; }
 .advanced summary:hover { color: var(--text); }
 .notice .btn { margin-left: auto; }
+
+/* AI cards */
+.ai { border-color: #4a3d63; }
+.ai .step__num { background: rgba(167, 139, 250, 0.15); border-color: #a78bfa; color: #a78bfa; }
