@@ -77,6 +77,11 @@ into Hermes. It is shown once and stored hashed. With it, Hermes can call
 | `GET /api/v1/campaigns` | Campaigns with status |
 | `GET /api/v1/campaigns/{id}` | Full launch payload (prompt, campaign, assets) |
 | `POST /api/v1/campaigns/{id}/status` | Report `{ status, message, externalId }` back |
+| `PUT /api/v1/meta` | Sync the Meta catalog: `{ adAccounts: [{id,name}], pixels: [{id,name}], pages: [{id,name}] }` |
+
+Hermes reads ad accounts, pixels/datasets, and pages with its Meta access token and sends them
+to `PUT /api/v1/meta`. They then appear as dropdowns in Ad Builder steps 5 and 9. Meta-style
+field names (`account_id`, `ad_accounts`, `datasets`) are accepted too.
 | `GET /api/creatives/{id}` | Image or video bytes |
 
 ## Notes

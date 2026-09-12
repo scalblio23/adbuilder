@@ -15,6 +15,7 @@
   var camp = null;         // the loaded campaign {id, name, status, data}
   var accounts = [];       // ad accounts for step 5
   var library = [];        // creatives for step 6
+  var meta = { adAccounts: { items: [], syncedAt: null }, pixels: { items: [], syncedAt: null }, pages: { items: [], syncedAt: null } };   // synced from Hermes
   var saveTimer = null;
   var saveState = null;    // element showing Saved / Saving
 
@@ -101,6 +102,8 @@
       destination: 'landing', landingUrl: '',
       targeting: { locations: '', ageMin: 18, ageMax: 65, gender: 'all', mode: 'advantage', interests: '' },
       accountId: '',
+      metaAdAccount: { id: '', name: '' },
+      page: { id: '', name: '' },
       creativeIds: [],
       adSets: [],
       leadForm: {
@@ -109,7 +112,7 @@
         privacyUrl: '', privacyDesc: '',
         thanks: { headline: '', desc: '', ctaLink: '', ctaLabel: '' }
       },
-      landingPage: { pixelId: '', objective: 'leads', event: 'Lead', customEvent: '' }
+      landingPage: { pixelId: '', pixelName: '', objective: 'leads', event: 'Lead', customEvent: '' }
     };
   }
   function merge(base, over) {
@@ -211,12 +214,64 @@
   }
   function step4() { return step(4, 'Targeting', 'Campaign defaults. Each ad set can use these or set its own in step 7.', [targetingFields(camp.data.targeting, true)]); }
 
+  function syncedLabel(kind) {
+    var at = meta[kind].syncedAt;
+    return at ? 'Synced from Hermes ' + new Date(at).toLocaleString() : 'Not synced yet. Hermes sends this list with its access token.';
+  }
+  var refreshMsg = '';
+  function refreshButton(afterRefresh) {
+    var out = h('span', { 'class': 'field__hint', text: refreshMsg });
+    refreshMsg = '';
+    var b = smallBtn('Refresh from Hermes', '', function () {
+      b.disabled = true; out.textContent = 'Asking Hermes…';
+      fetch('/api/hermes/meta', { method: 'POST' }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+        .then(function (r) {
+          if (!r.ok) { out.textContent = r.body.error || 'Refresh failed.'; return; }
+          return request('GET', '/api/meta').then(function (m) { meta = m; refreshMsg = 'Updated ' + new Date().toLocaleTimeString() + '.'; afterRefresh(); });
+        }, function (err) { out.textContent = 'Refresh failed: ' + err.message; })
+        .then(function () { b.disabled = false; });
+    });
+    return h('div', { 'class': 'btn-row' }, [b, out]);
+  }
   function step5() {
     var d = camp.data;
-    var options = [['', 'Choose an ad account…']].concat(accounts.map(function (a) { return [a.id, a.client + (a.company ? ' – ' + a.company : '')]; }));
-    var sel = select(options, d.accountId, function (v) { d.accountId = v; });
-    var hint = accounts.length ? 'From the Ad Accounts tab.' : 'No ad accounts yet. Add them in the Ad Accounts tab.';
-    return step(5, 'Account selection', 'Which ad account this campaign launches in.', [field('Ad account', sel, hint)]);
+    // One dropdown: Meta ad accounts synced from Hermes, then the manual Ad Accounts tab.
+    var sel = h('select', { 'class': 'table__input', onchange: function (e) {
+      var v = e.target.value;
+      if (v.indexOf('meta:') === 0) { var item = meta.adAccounts.items.filter(function (a) { return a.id === v.slice(5); })[0]; d.metaAdAccount = { id: v.slice(5), name: item ? item.name : v.slice(5) }; d.accountId = ''; }
+      else if (v.indexOf('local:') === 0) { d.accountId = v.slice(6); d.metaAdAccount = { id: '', name: '' }; }
+      else { d.accountId = ''; d.metaAdAccount = { id: '', name: '' }; }
+      dirty();
+    } });
+    sel.appendChild(h('option', { value: '', text: 'Choose an ad account…' }));
+    if (meta.adAccounts.items.length) {
+      var g1 = h('optgroup', { label: 'Meta ad accounts (from Hermes)' });
+      meta.adAccounts.items.forEach(function (a) { g1.appendChild(h('option', { value: 'meta:' + a.id, text: a.name + ' — ' + a.id + (a.currency ? ' · ' + a.currency : '') })); });
+      sel.appendChild(g1);
+    }
+    if (accounts.length) {
+      var g2 = h('optgroup', { label: 'Ad Accounts tab' });
+      accounts.forEach(function (a) { g2.appendChild(h('option', { value: 'local:' + a.id, text: a.client + (a.company ? ' – ' + a.company : '') })); });
+      sel.appendChild(g2);
+    }
+    sel.value = d.metaAdAccount && d.metaAdAccount.id ? 'meta:' + d.metaAdAccount.id : d.accountId ? 'local:' + d.accountId : '';
+    if (sel.value !== (d.metaAdAccount && d.metaAdAccount.id ? 'meta:' + d.metaAdAccount.id : d.accountId ? 'local:' + d.accountId : '')) {
+      // the saved choice is no longer in the list; keep showing it
+      var keep = d.metaAdAccount && d.metaAdAccount.id ? h('option', { value: 'meta:' + d.metaAdAccount.id, text: (d.metaAdAccount.name || d.metaAdAccount.id) + ' (no longer in the synced list)' }) : null;
+      if (keep) { sel.appendChild(keep); sel.value = keep.value; }
+    }
+
+    var pageSel = select([['', 'Choose a page…']].concat(meta.pages.items.map(function (p) { return [p.id, p.name + ' — ' + p.id]; })), d.page && d.page.id, function (v) {
+      var item = meta.pages.items.filter(function (p) { return p.id === v; })[0];
+      d.page = { id: v, name: item ? item.name : v };
+    });
+    if (d.page && d.page.id && !meta.pages.items.some(function (p) { return p.id === d.page.id; })) { var keepP = h('option', { value: d.page.id, text: (d.page.name || d.page.id) + ' (no longer in the synced list)' }); pageSel.appendChild(keepP); pageSel.value = d.page.id; }
+
+    return step(5, 'Account selection', 'Which ad account and Facebook Page this campaign runs from.', [
+      field('Ad account', sel, meta.adAccounts.items.length ? syncedLabel('adAccounts') : 'No Meta accounts synced yet. ' + (accounts.length ? 'Showing the Ad Accounts tab.' : 'Add accounts in the Ad Accounts tab or sync from Hermes.')),
+      field('Facebook Page', pageSel, meta.pages.items.length ? syncedLabel('pages') : 'No pages synced yet. Hermes sends the pages the Meta token can access.'),
+      refreshButton(function () { var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5()); })
+    ]);
   }
 
   function step6() {
@@ -445,12 +500,24 @@
     function sync() { customField.hidden = lp.event !== 'Custom'; }
     var ev = select(EVENTS.map(function (e) { return [e, e.replace(/([a-z])([A-Z])/g, '$1 $2')]; }), lp.event, function (v) { lp.event = v; sync(); });
     sync();
+    var manual = text(lp.pixelId, 'e.g. 123456789012345', function (v) { lp.pixelId = v; lp.pixelName = ''; });
+    var manualField = field('Pixel ID (manual)', manual);
+    var pixelOptions = [['', 'Choose a pixel / dataset…']].concat(meta.pixels.items.map(function (px) { return [px.id, px.name + ' — ' + px.id]; })).concat([['__manual', 'Enter an ID manually']]);
+    var known = meta.pixels.items.some(function (px) { return px.id === lp.pixelId; });
+    var pixelSel = select(pixelOptions, known ? lp.pixelId : (lp.pixelId ? '__manual' : ''), function (v) {
+      if (v === '__manual') { lp.pixelId = manual.value.trim(); lp.pixelName = ''; }
+      else { var item = meta.pixels.items.filter(function (px) { return px.id === v; })[0]; lp.pixelId = v; lp.pixelName = item ? item.name : ''; }
+      syncPixel();
+    });
+    function syncPixel() { manualField.hidden = pixelSel.value !== '__manual'; }
+    syncPixel();
     return step(9, 'Landing page builder', 'Used when the destination is a landing page.', [
       h('div', { 'class': 'field-row' }, [
-        field('Pixel ID', text(lp.pixelId, 'e.g. 123456789012345', function (v) { lp.pixelId = v; })),
+        field('Pixel / dataset', pixelSel, meta.pixels.items.length ? syncedLabel('pixels') : 'No pixels synced yet. Choose "Enter an ID manually" or sync from Hermes.'),
         field('Conversion objective', select(OBJECTIVES, lp.objective, function (v) { lp.objective = v; })),
         field('Conversion event', ev)
       ]),
+      manualField,
       customField
     ], camp.data.destination !== 'landing');
   }
@@ -467,7 +534,7 @@
     if (!d.copy.some(function (c) { return c.trim(); })) list.push('Add at least one ad copy (step 1).');
     if (!d.headlines.some(function (c) { return c.trim(); })) list.push('Add at least one headline (step 2).');
     if (d.destination === 'landing' && !/^https?:\/\//i.test(d.landingUrl)) list.push('Enter a landing page URL (step 3).');
-    if (!d.accountId) list.push('Choose an ad account (step 5).');
+    if (!d.accountId && !(d.metaAdAccount && d.metaAdAccount.id)) list.push('Choose an ad account (step 5).');
     if (!d.creativeIds.length) list.push('Select at least one creative (step 6).');
     if (!d.adSets.length) list.push('Add at least one ad set (step 7).');
     d.adSets.forEach(function (s, i) { if (!s.creativeIds.length) list.push('Ad set ' + (i + 1) + ' has no ads (step 7).'); });
@@ -607,6 +674,7 @@
         'GET  ' + base + '/api/v1/campaigns                 → list of campaigns with status',
         'GET  ' + base + '/api/v1/campaigns/{id}            → full launch payload: prompt, campaign, assets',
         'POST ' + base + '/api/v1/campaigns/{id}/status     → { status: "launched", message, externalId }',
+        'PUT  ' + base + '/api/v1/meta                      → { adAccounts: [{id,name}], pixels: [{id,name}], pages: [{id,name}] }  (sync from the Meta token)',
         'GET  ' + base + '/api/creatives/{id}               → the image/video bytes (links are in assets[].url)'
       ].join('\n') })
     ]);
@@ -650,7 +718,8 @@
   function loadRefs() {
     return Promise.all([
       request('GET', '/api/ad-accounts').then(function (l) { accounts = l || []; }, function () { accounts = []; }),
-      request('GET', '/api/creatives').then(function (l) { library = l || []; }, function () { library = []; })
+      request('GET', '/api/creatives').then(function (l) { library = l || []; }, function () { library = []; }),
+      request('GET', '/api/meta').then(function (m) { if (m) meta = m; }, function () {})
     ]);
   }
   function openCampaign(id) {
