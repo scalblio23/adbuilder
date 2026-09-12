@@ -797,6 +797,9 @@
         'GET  ' + base + '/api/v1/campaigns/{id}            → full launch payload: prompt, campaign, assets',
         'POST ' + base + '/api/v1/campaigns/{id}/status     → { status: "launched", message, externalId }',
         'PUT  ' + base + '/api/v1/meta                      → { adAccounts: [{id,name}], pixels: [{id,name}], pages: [{id,name}] }  (sync from the Meta token)',
+        'POST ' + base + '/api/v1/creatives                 → { name, mime, data: base64 } → { id, url, hash }  (upload media, deduped by hash)',
+        'PUT  ' + base + '/api/v1/swipes                    → { items: [{ libraryId, advertiser, mediaType, mediaUrl, mediaHash, copy, headline, cta, landingUrl, ranking, active }] }',
+        'GET  ' + base + '/api/v1/swipes                    → saved Library IDs + media hashes (skip what is already stored)',
         'GET  ' + base + '/api/creatives/{id}               → the image/video bytes (links are in assets[].url)'
       ].join('\n') })
     ]);

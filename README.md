@@ -47,6 +47,28 @@ builder (greeting, custom questions with conditional logic, contact details, pri
 thank-you page), and landing page settings (pixel, conversion objective and event). Drafts
 autosave to the server and are shared with the team.
 
+## Creative Swipe File
+
+The Swipe File tab is a gallery of Meta Ad Library creatives that Hermes collects. Hermes
+extracts each ad with Chromium, uploads the media with `POST /api/v1/creatives` (base64, up to
+3.5 MB; the reply carries a permanent `url` and a `hash`, and identical bytes return the existing
+record), then upserts the metadata with `PUT /api/v1/swipes`:
+
+```json
+{ "items": [ { "libraryId": "1234567890123", "advertiser": "Nike", "mediaType": "image",
+  "mediaUrl": "https://your-site/api/creatives/<id>", "mediaHash": "<sha256 from the upload>",
+  "thumbnailUrl": "", "copy": "…", "headline": "…", "cta": "Shop now",
+  "landingUrl": "https://…", "ranking": 4, "startedAt": "2026-08-01", "active": true } ] }
+```
+
+Records are stored in the `documents` table (collection `swipes`, id = Library ID) with first
+and last seen timestamps. Duplicates are handled two ways: the same Library ID updates the
+existing record, and a different Library ID with the same media hash is merged into the
+existing record as an alias. `GET /api/v1/swipes` returns saved IDs and hashes so Hermes can
+skip work. The page renders images and videos, filters by advertiser, media type, and active
+state, searches copy, and lets you rank, toggle active, or delete. Meta-style field names
+(`page_name`, `media_url`, `is_active`) are accepted.
+
 ## AI brain
 
 "Let AI build" at the top of Ad Builder turns a short brief into copy, headlines, targeting,

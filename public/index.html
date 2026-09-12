@@ -34,7 +34,7 @@
         </a>
         <a href="#creatives" class="nav-item" data-section="creatives">
           <span class="nav-item__icon">&#9670;</span>
-          <span class="nav-item__label">Creatives</span>
+          <span class="nav-item__label">Swipe File</span>
         </a>
         <a href="#proven-creatives" class="nav-item" data-section="proven-creatives">
           <span class="nav-item__icon">&#9733;</span>
@@ -138,7 +138,21 @@
           <div class="card"><h2 class="card__title">Campaigns</h2><p class="muted">Campaign list goes here.</p></div>
         </section>
         <section class="section" id="creatives">
-          <div class="card"><h2 class="card__title">Creatives</h2><p class="muted">Creative assets go here.</p></div>
+          <div class="card">
+            <div class="card__header">
+              <h2 class="card__title">Creative Swipe File</h2>
+              <div class="btn-row">
+                <input class="table__input" id="swipeSearch" type="search" placeholder="Search advertiser, copy, headline…" style="width:260px">
+                <select class="table__input" id="swipeType"><option value="">All media</option><option value="image">Images</option><option value="video">Videos</option><option value="carousel">Carousels</option></select>
+                <select class="table__input" id="swipeActive"><option value="">Active and inactive</option><option value="1">Active only</option><option value="0">Inactive only</option></select>
+                <select class="table__input" id="swipeAdvertiser"><option value="">All advertisers</option></select>
+                <button class="btn" id="swipeRefresh">Refresh</button>
+              </div>
+            </div>
+            <div class="notice" id="swipeNotice"><span class="notice__dot"></span><span id="swipeNoticeText">Loading…</span></div>
+            <div class="swipes" id="swipeGrid"></div>
+            <p class="muted" id="swipeEmpty" hidden>Nothing saved yet. Hermes adds Meta Ad Library creatives here through the API.</p>
+          </div>
         </section>
         <section class="section" id="proven-creatives">
           <div class="card">
@@ -205,5 +219,6 @@
   <script src="ad-accounts.js"></script>
   <script src="ad-builder.js"></script>
   <script src="settings.js"></script>
+  <script src="swipe.js"></script>
 </body>
 </html>
