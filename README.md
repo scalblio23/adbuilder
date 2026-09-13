@@ -113,9 +113,11 @@ The Hermes section at the bottom of the Ad Builder page handles both directions.
 
 **AdBuilder calling Hermes** (Launch button, Refresh from Hermes, Test connection): Hermes
 receives webhooks on `WEBHOOK_PORT` (8644) and verifies each request with `WEBHOOK_SECRET`.
-Expose that port publicly (for example `ngrok http 8644`), then in the Hermes card's
-"Send to Hermes" section press "Use Hermes webhook settings", paste the public webhook URL
-(e.g. `https://abc123.ngrok.app/webhooks/test`) and the secret, Save, and Test connection.
+In the Hermes card's "Send to Hermes" section, press "Generate secret": AdBuilder creates the
+`WEBHOOK_SECRET`, shows it once, and signs everything it sends with it. Paste it into Hermes
+(with `WEBHOOK_ENABLED=true`) and restart Hermes. Expose Hermes' port publicly (for example
+`ngrok http 8644`), enter the public webhook URL (e.g. `https://abc123.ngrok.app/webhooks/test`),
+Save, and Test connection.
 Requests are signed with HMAC SHA-256 over the exact body (`X-Hub-Signature-256: sha256=…`,
 GitHub style, plus `X-Signature-256`, `X-Webhook-Signature`, and a sha1 `X-Hub-Signature`) and
 carry `X-Event-Type` (`adbuilder.test` or `adbuilder.campaign.launch`). Bearer and X-API-Key

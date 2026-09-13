@@ -817,10 +817,36 @@
     var url = h('input', { 'class': 'table__input', type: 'url', placeholder: 'https://hermes.example.com/api', id: 'hermesUrl' });
     var key = h('input', { 'class': 'table__input', type: 'password', placeholder: 'Paste the Hermes API key', autocomplete: 'off', id: 'hermesKey' });
     var auth = h('select', { 'class': 'table__input', id: 'hermesAuth' }, [['hmac', 'Webhook secret: sign each request (HMAC SHA-256)'], ['bearer', 'Authorization: Bearer <key>'], ['x-api-key', 'X-API-Key: <key>'], ['both', 'Bearer and X-API-Key']].map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+    // WEBHOOK_SECRET that Hermes verifies: generated here, pasted into Hermes.
+    var secretBox = h('div', { 'class': 'apikey' });
+    function drawSecret(fresh) {
+      secretBox.innerHTML = '';
+      secretBox.appendChild(h('div', { 'class': 'apikey__head' }, [h('span', { 'class': 'apikey__name', text: 'WEBHOOK_SECRET' }), h('span', { 'class': 'badge ' + (cfg.webhookSecretSet ? 'badge--ready' : 'badge--draft'), text: cfg.webhookSecretSet ? 'Set' : 'Not set' })]));
+      var value = h('div', { 'class': 'apikey__value' + (fresh ? ' is-fresh' : ''), text: fresh || (cfg.webhookSecretSet ? cfg.webhookSecretMasked : 'No secret yet. Generate one and paste it into Hermes as WEBHOOK_SECRET.') });
+      var actions = h('div', { 'class': 'btn-row' });
+      if (fresh) actions.appendChild(smallBtn('Copy', 'btn--primary', function (e) {
+        var done = function () { e.target.textContent = 'Copied'; setTimeout(function () { e.target.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard) navigator.clipboard.writeText(fresh).then(done, function () { prompt('WEBHOOK_SECRET', fresh); }); else prompt('WEBHOOK_SECRET', fresh);
+      }));
+      actions.appendChild(smallBtn(cfg.webhookSecretSet ? 'Replace' : 'Generate secret', cfg.webhookSecretSet ? '' : 'btn--primary', function () {
+        if (cfg.webhookSecretSet && !confirm('Replace the secret? Hermes will reject requests until the new one is pasted in.')) return;
+        request('POST', '/api/settings/webhook-secret').then(function (c) { var fresh = c.secret; delete c.secret; cfg = c; fill(); drawSecret(fresh); }, function (err) { setStatus('error', 'Could not generate: ' + err.message); });
+      }));
+      if (cfg.webhookSecretSet) actions.appendChild(smallBtn('Clear', 'btn--danger', function () {
+        if (!confirm('Clear the secret? Requests to Hermes will stop being signed.')) return;
+        request('DELETE', '/api/settings/webhook-secret').then(function (c) { cfg = c; fill(); drawSecret(); }, function (err) { setStatus('error', err.message); });
+      }));
+      secretBox.appendChild(h('div', { 'class': 'apikey__row' }, [value, actions]));
+      if (fresh) secretBox.appendChild(h('div', { 'class': 'field__hint', text: 'Shown once. In Hermes set WEBHOOK_ENABLED=true and WEBHOOK_SECRET to this value, then restart Hermes.' }));
+    }
+    var keyField = field('API key (only for Bearer / X-API-Key modes)', key);
+    function syncAuthFields() { keyField.hidden = auth.value === 'hmac'; }
+    auth.addEventListener('change', syncAuthFields);
     var preset = smallBtn('Use Hermes webhook settings', '', function () {
       auth.value = 'hmac'; launchPath.value = ''; testMethod.value = 'POST'; testPath.value = '';
       if (!url.value.trim()) url.placeholder = 'https://<your-tunnel>.ngrok.app/webhooks/test';
-      setStatus('', 'Filled in for a Hermes webhook: paste the public webhook URL and the WEBHOOK_SECRET, then Save and Test connection.');
+      syncAuthFields();
+      setStatus('', 'Filled in for a Hermes webhook: enter the public webhook URL, Save, then Test connection.');
     });
     var launchPath = h('input', { 'class': 'table__input', placeholder: '/campaigns', id: 'hermesLaunchPath' });
     var testMethod = h('select', { 'class': 'table__input', id: 'hermesTestMethod' }, [h('option', { value: 'GET', text: 'GET' }), h('option', { value: 'POST', text: 'POST' })]);
@@ -832,7 +858,9 @@
       key.value = ''; key.placeholder = cfg.hermesKeyMasked ? 'Saved key ' + cfg.hermesKeyMasked + ' (paste a new one to replace)' : 'Paste the Hermes API key';
       var locked = cfg.source === 'env';
       [url, key, auth, launchPath, testMethod, testPath, publicBase, saveBtn].forEach(function (x) { x.disabled = locked; });
-      setStatus(cfg.hermesConfigured ? 'ok' : '', cfg.hermesConfigured ? 'Hermes is connected' + (locked ? ' (configured through environment variables on the host).' : '. Use Test connection to check it answers.') : 'Not connected yet. Enter the Hermes URL and API key, save, then test.');
+      syncAuthFields();
+      drawSecret();
+      setStatus(cfg.hermesConfigured ? 'ok' : '', cfg.hermesConfigured ? 'Ready to send to Hermes' + (locked ? ' (configured through environment variables on the host).' : '. Use Test connection to check it answers.') : (cfg.webhookSecretSet ? 'Secret set. Enter Hermes\' public webhook URL, Save, then Test connection.' : 'Generate the WEBHOOK_SECRET, paste it into Hermes, then enter Hermes\' public webhook URL.'));
     }
     var saveBtn = btn('Save', 'btn--primary', function () {
       saveBtn.disabled = true;
@@ -922,8 +950,9 @@
       h('summary', { text: 'Send to Hermes: webhook settings (Launch button, Refresh from Hermes)' }),
       status,
       h('p', { 'class': 'muted', text: 'Hermes receives webhooks on its WEBHOOK_PORT (8644) and checks each request against its WEBHOOK_SECRET. Expose that port publicly (for example with ngrok), then enter the public URL and the secret here.', style: 'margin: 0 0 12px' }),
+      secretBox,
       h('div', { 'class': 'btn-row', style: 'margin-bottom: 12px' }, [preset]),
-      h('div', { 'class': 'field-row' }, [field('Hermes webhook URL', url, 'Full address, e.g. https://abc123.ngrok.app/webhooks/test'), field('Webhook secret (or API key)', key)]),
+      h('div', { 'class': 'field-row' }, [field('Hermes webhook URL', url, 'Full address, e.g. https://abc123.ngrok.app/webhooks/test'), keyField]),
       h('div', { 'class': 'field-row' }, [field('Send the secret as', auth), field('Launch path', launchPath, 'Leave blank when the URL already points at the webhook.')]),
       h('div', { 'class': 'field-row' }, [field('Test method', testMethod), field('Test path', testPath, 'GET calls it plainly; POST sends { prompt: "Connection test…" }.'), field('Public base URL for asset links', publicBase, 'Leave blank to use this site\'s address.')]),
       h('div', { 'class': 'btn-row' }, [saveBtn, testBtn]),
