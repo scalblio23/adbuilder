@@ -113,8 +113,12 @@ The Campaigns tab shows hand-picked Meta campaigns: metric cards at the top (rev
 Facebook stats, revenue vs cost, leads) and one row per campaign underneath. Only the campaigns
 chosen there are ever pulled from Meta, to stay well inside the API rate limits.
 
-1. **Choose campaigns**: tick campaigns from the list Hermes synced (`PUT /api/v1/meta` with
-   `{ campaigns: [{ id, name, adAccountId, adAccountName, status, objective }] }`) or add one by ID.
+1. **Choose campaigns**: step 1 ticks ad accounts (from the Meta catalog Hermes synced, or any
+   Ads Manager link with `act=` in the Ad Accounts tab); "Pull campaigns" sends Hermes an
+   `adbuilder.campaigns.sync` webhook naming those accounts, and Hermes replies with
+   `PUT /api/v1/meta { campaigns: [{ id, name, adAccountId, adAccountName, status, objective }] }`
+   (campaigns are merged per ad account). With no accounts known, `adbuilder.accounts.sync` asks
+   for the account list instead. Step 2 ticks which campaigns show on the dashboard.
 2. **Scheduled pulls**: `vercel.json` runs `/api/cron/stats` at 8:00 and 15:00 Adelaide time
    (daylight-saving times, 21:30 and 04:30 UTC; in winter they land at 7:00 and 14:00). Set
    `CRON_SECRET` in the Vercel project (any long random string) or the cron is refused.
@@ -152,7 +156,6 @@ platforms:
       routes:
         adbuilder:
           secret: "<the generated WEBHOOK_SECRET>"
-          events: ["adbuilder.campaign.launch", "adbuilder.stats.refresh", "adbuilder.test"]
           prompt: |
             {prompt}
 

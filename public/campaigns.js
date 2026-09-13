@@ -216,60 +216,144 @@
     ]);
   }
 
-  // ---- picker ----
-  function openPicker(data) {
+  // ---- picker: 1) ad accounts -> 2) Hermes pulls their campaigns -> 3) tick what shows on the dashboard ----
+  function waitFor(check, onDone, onGiveUp, everyMs, maxTries) {
+    var tries = 0;
+    (function tick() {
+      setTimeout(function () {
+        tries++;
+        request('GET', '/api/tracked').then(function (o) {
+          data = o;
+          if (check(o)) return onDone(o);
+          if (tries < maxTries) tick(); else onGiveUp(o);
+        }, function () { if (tries < maxTries) tick(); else onGiveUp(data); });
+      }, everyMs);
+    })();
+  }
+  function openPicker() {
+    var chosenAccounts = {}; data.tracked.forEach(function (t) { if (t.adAccountId) chosenAccounts[t.adAccountId] = true; });
     var chosen = {}; data.tracked.forEach(function (t) { chosen[t.id] = t; });
-    var catalog = data.catalog.items.slice();
-    var search = h('input', { 'class': 'table__input', placeholder: 'Search campaigns…', type: 'search' });
-    var list = h('div', { 'class': 'picker__list' });
-    var countEl = h('span', { 'class': 'muted' });
-    function draw() {
-      list.innerHTML = '';
-      var q = search.value.trim().toLowerCase();
-      var groups = {};
-      var extra = Object.keys(chosen).filter(function (id) { return !catalog.some(function (c) { return c.id === id; }); }).map(function (id) { return chosen[id]; });
-      catalog.concat(extra).forEach(function (c) {
-        if (q && (c.name + ' ' + c.id + ' ' + (c.adAccountName || '')).toLowerCase().indexOf(q) === -1) return;
-        var g = c.adAccountName || c.adAccountId || 'Other';
-        (groups[g] = groups[g] || []).push(c);
-      });
-      Object.keys(groups).sort().forEach(function (g) {
-        list.appendChild(h('div', { 'class': 'picker__group', text: g }));
-        groups[g].forEach(function (c) {
-          var box = h('input', { type: 'checkbox', checked: !!chosen[c.id] });
-          var item = h('label', { 'class': 'picker__item' + (chosen[c.id] ? ' is-added' : '') }, [box, h('div', { 'class': 'picker__text' }, [h('strong', { text: c.name }), h('span', { text: 'ID ' + c.id + (c.status ? ' · ' + c.status : '') + (c.objective ? ' · ' + c.objective : '') })])]);
-          box.addEventListener('change', function () { if (box.checked) chosen[c.id] = c; else delete chosen[c.id]; item.classList.toggle('is-added', box.checked); countEl.textContent = Object.keys(chosen).length + ' selected'; });
-          list.appendChild(item);
-        });
-      });
-      if (!list.children.length) list.appendChild(h('p', { 'class': 'muted', text: catalog.length ? 'Nothing matches.' : 'No campaigns synced from Hermes yet. Add one by ID below, or ask Hermes to send the campaign list (see the note under the list).' }));
-      countEl.textContent = Object.keys(chosen).length + ' selected';
-    }
-    search.addEventListener('input', draw);
-    var manualId = h('input', { 'class': 'table__input', placeholder: 'Campaign ID (numbers only)', inputmode: 'numeric' });
-    var manualName = h('input', { 'class': 'table__input', placeholder: 'Name' });
-    var manualAdd = h('button', { 'class': 'btn', type: 'button', onclick: function () {
-      var id = manualId.value.replace(/\D/g, '');
-      if (!/^\d{5,30}$/.test(id)) { manualId.focus(); return; }
-      chosen[id] = { id: id, name: manualName.value.trim() || 'Campaign ' + id };
-      manualId.value = ''; manualName.value = ''; draw();
-    } }, ['Add by ID']);
-    var save = h('button', { 'class': 'btn btn--primary', type: 'button' }, ['Save selection']);
-    var overlay = h('div', { 'class': 'picker' }, [h('div', { 'class': 'picker__panel' }, [
-      h('div', { 'class': 'picker__head' }, [h('h2', { 'class': 'card__title', text: 'Choose campaigns to track', style: 'margin:0' }), h('button', { 'class': 'btn', type: 'button', onclick: function () { overlay.remove(); } }, ['Close'])]),
-      h('p', { 'class': 'muted', text: 'Only the campaigns ticked here are pulled from Meta, twice a day and on Refresh. Fewer campaigns means fewer API calls.' }),
-      search, list,
-      h('div', { 'class': 'picker__manual' }, [manualId, manualName, manualAdd]),
-      h('div', { 'class': 'picker__foot' }, [countEl, save])
-    ])]);
-    save.addEventListener('click', function () {
-      save.disabled = true;
-      request('PUT', '/api/tracked', { campaigns: Object.keys(chosen).map(function (id) { return chosen[id]; }) })
-        .then(function (o) { overlay.remove(); apply(o); setNotice('ok', 'Tracking ' + o.tracked.length + ' campaign' + (o.tracked.length === 1 ? '' : 's') + '. Press Refresh to pull their numbers now.'); }, function (err) { save.disabled = false; setNotice('error', err.message); });
-    });
+    var step = 1, requestedAt = 0, waiting = false;
+    var panel = h('div', { 'class': 'picker__panel picker__panel--wide' });
+    var overlay = h('div', { 'class': 'picker' }, [panel]);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+    var status = h('div', { 'class': 'notice', hidden: '' }, [h('span', { 'class': 'notice__dot' }), h('span')]);
+    function say(kind, text) { status.hidden = !text; status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = text || ''; }
+    function head() {
+      return h('div', { 'class': 'picker__head' }, [
+        h('div', {}, [h('h2', { 'class': 'card__title', text: 'Choose campaigns', style: 'margin:0' }),
+          h('div', { 'class': 'steps' }, [1, 2, 3].map(function (n) { return h('span', { 'class': 'steps__item' + (n === step ? ' is-on' : n < step ? ' is-done' : ''), text: n + ' ' + ['Ad accounts', 'Campaigns', 'Dashboard'][n - 1] }); }))]),
+        h('button', { 'class': 'btn', type: 'button', onclick: function () { overlay.remove(); } }, ['Close'])
+      ]);
+    }
+    function draw() { panel.innerHTML = ''; panel.appendChild(head()); panel.appendChild(status); (step === 1 ? drawAccounts : drawCampaigns)(); }
+
+    // Step 1: which ad accounts
+    function drawAccounts() {
+      var accounts = data.accounts || [];
+      panel.appendChild(h('p', { 'class': 'muted', text: 'Which ad accounts do you want to pull campaigns from? Hermes lists the campaigns of the ticked accounts only.' }));
+      var list = h('div', { 'class': 'picker__list' });
+      var boxes = [];
+      function countSel() { return Object.keys(chosenAccounts).filter(function (k) { return chosenAccounts[k]; }).length; }
+      var allBox = h('input', { type: 'checkbox' });
+      var allRow = h('label', { 'class': 'picker__item picker__item--all' }, [allBox, h('div', { 'class': 'picker__text' }, [h('strong', { text: 'Select all' }), h('span', { text: accounts.length + ' ad account' + (accounts.length === 1 ? '' : 's') })])]);
+      allBox.addEventListener('change', function () { accounts.forEach(function (a) { chosenAccounts[a.id] = allBox.checked; }); boxes.forEach(function (b) { b.checked = allBox.checked; }); syncAll(); });
+      function syncAll() { allBox.checked = accounts.length > 0 && accounts.every(function (a) { return chosenAccounts[a.id]; }); pull.disabled = !countSel() || waiting; pull.textContent = waiting ? 'Asking Hermes…' : 'Pull campaigns from ' + (countSel() || 'these') + ' account' + (countSel() === 1 ? '' : 's'); }
+      if (accounts.length) list.appendChild(allRow);
+      accounts.forEach(function (a) {
+        var box = h('input', { type: 'checkbox', checked: !!chosenAccounts[a.id] });
+        boxes.push(box);
+        box.addEventListener('change', function () { chosenAccounts[a.id] = box.checked; syncAll(); });
+        list.appendChild(h('label', { 'class': 'picker__item' }, [box, h('div', { 'class': 'picker__text' }, [h('strong', { text: a.name }), h('span', { text: a.id + (a.source === 'table' ? ' · from the Ad Accounts tab' : '') })])]));
+      });
+      if (!accounts.length) list.appendChild(h('p', { 'class': 'muted', text: 'No ad accounts known yet. Ask Hermes for the list, or add the Ads Manager link (with act=…) to a row in the Ad Accounts tab.' }));
+      panel.appendChild(list);
+      var pull = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: function () {
+        var ids = accounts.filter(function (a) { return chosenAccounts[a.id]; }).map(function (a) { return a.id; });
+        waiting = true; syncAll();
+        request('POST', '/api/tracked/sync', { accounts: ids }).then(function (r) {
+          requestedAt = r.sync.at; step = 2; draw();
+          say('ok', 'Hermes accepted the request (HTTP ' + r.sync.status + '). Campaigns appear below as it sends them; checking every 10 seconds.');
+          waitFor(function (o) { return o.catalog.syncedAt && o.catalog.syncedAt > requestedAt; },
+            function () { waiting = false; if (step === 2) { draw(); say('ok', 'Campaign list updated ' + when(data.catalog.syncedAt) + '.'); } },
+            function () { waiting = false; if (step === 2) { draw(); say('', 'Nothing from Hermes yet. The list below is what was synced before; it updates when Hermes sends more.'); } }, 10000, 30);
+        }, function (err) { waiting = false; syncAll(); say('error', err.message); });
+      } }, ['Pull campaigns']);
+      var fetchAccounts = h('button', { 'class': 'btn', type: 'button', onclick: function () {
+        fetchAccounts.disabled = true; fetchAccounts.textContent = 'Asking Hermes…';
+        request('POST', '/api/tracked/sync', { accounts: [] }).then(function (r) {
+          say('ok', 'Hermes accepted the request (HTTP ' + r.sync.status + '). Ad accounts appear here as it sends them; checking every 10 seconds.');
+          var before = (data.accounts || []).length;
+          waitFor(function (o) { return (o.accounts || []).length > before; },
+            function () { if (step === 1) { draw(); say('ok', 'Ad accounts received.'); } },
+            function () { fetchAccounts.disabled = false; fetchAccounts.textContent = 'Fetch ad accounts from Hermes'; say('', 'No ad accounts from Hermes yet. Check the Hermes gateway log.'); }, 10000, 30);
+        }, function (err) { fetchAccounts.disabled = false; fetchAccounts.textContent = 'Fetch ad accounts from Hermes'; say('error', err.message); });
+      } }, ['Fetch ad accounts from Hermes']);
+      var skip = h('button', { 'class': 'btn', type: 'button', onclick: function () { step = 2; draw(); } }, ['Skip: use campaigns already synced']);
+      panel.appendChild(h('div', { 'class': 'picker__foot' }, [h('div', { 'class': 'btn-row' }, [fetchAccounts, skip]), pull]));
+      syncAll();
+    }
+
+    // Step 2: campaigns of the chosen accounts, tick to show on the dashboard
+    function drawCampaigns() {
+      var selectedAccounts = Object.keys(chosenAccounts).filter(function (k) { return chosenAccounts[k]; });
+      var catalog = (data.catalog.items || []).filter(function (c) { return !selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1; });
+      var names = {}; (data.accounts || []).forEach(function (a) { names[a.id] = a.name; });
+      panel.appendChild(h('p', { 'class': 'muted', text: 'Tick the campaigns to show on the dashboard. Only ticked campaigns are pulled from Meta (twice a day and on Refresh).' }));
+      var search = h('input', { 'class': 'table__input', placeholder: 'Search campaigns…', type: 'search' });
+      var list = h('div', { 'class': 'picker__list' });
+      var countEl = h('span', { 'class': 'muted' });
+      function selectedCount() { return Object.keys(chosen).length; }
+      function drawList() {
+        list.innerHTML = '';
+        var q = search.value.trim().toLowerCase();
+        var extra = Object.keys(chosen).filter(function (id) { return !catalog.some(function (c) { return c.id === id; }); }).map(function (id) { return chosen[id]; });
+        var groups = {};
+        catalog.concat(extra).forEach(function (c) {
+          if (q && (c.name + ' ' + c.id + ' ' + (c.adAccountName || '')).toLowerCase().indexOf(q) === -1) return;
+          var g = c.adAccountName || names[c.adAccountId] || c.adAccountId || 'Other';
+          (groups[g] = groups[g] || []).push(c);
+        });
+        Object.keys(groups).sort().forEach(function (g) {
+          var items = groups[g];
+          var allBox = h('input', { type: 'checkbox', checked: items.every(function (c) { return !!chosen[c.id]; }) });
+          var groupRow = h('label', { 'class': 'picker__group picker__group--row' }, [allBox, h('span', { text: g + ' · ' + items.length })]);
+          allBox.addEventListener('change', function () { items.forEach(function (c) { if (allBox.checked) chosen[c.id] = c; else delete chosen[c.id]; }); drawList(); });
+          list.appendChild(groupRow);
+          items.sort(function (a, b) { return (a.status === 'ACTIVE' ? 0 : 1) - (b.status === 'ACTIVE' ? 0 : 1) || a.name.localeCompare(b.name); }).forEach(function (c) {
+            var box = h('input', { type: 'checkbox', checked: !!chosen[c.id] });
+            var item = h('label', { 'class': 'picker__item' + (chosen[c.id] ? ' is-added' : '') }, [box,
+              h('div', { 'class': 'picker__text' }, [h('strong', { text: c.name }), h('span', { text: 'ID ' + c.id + (c.status ? ' · ' + c.status : '') + (c.objective ? ' · ' + c.objective : '') })]),
+              h('span', { 'class': 'picker__show', text: chosen[c.id] ? 'On dashboard' : 'Show on dashboard' })]);
+            box.addEventListener('change', function () { if (box.checked) chosen[c.id] = c; else delete chosen[c.id]; item.classList.toggle('is-added', box.checked); item.lastChild.textContent = box.checked ? 'On dashboard' : 'Show on dashboard'; countEl.textContent = selectedCount() + ' on dashboard'; });
+            list.appendChild(item);
+          });
+        });
+        if (!list.children.length) list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
+        countEl.textContent = selectedCount() + ' on dashboard';
+      }
+      search.addEventListener('input', drawList);
+      var manualId = h('input', { 'class': 'table__input', placeholder: 'Campaign ID (numbers only)', inputmode: 'numeric' });
+      var manualName = h('input', { 'class': 'table__input', placeholder: 'Name' });
+      var manualAdd = h('button', { 'class': 'btn', type: 'button', onclick: function () {
+        var id = manualId.value.replace(/\D/g, '');
+        if (!/^\d{5,30}$/.test(id)) { manualId.focus(); return; }
+        chosen[id] = { id: id, name: manualName.value.trim() || 'Campaign ' + id, adAccountId: selectedAccounts.length === 1 ? selectedAccounts[0] : '' };
+        manualId.value = ''; manualName.value = ''; drawList();
+      } }, ['Add by ID']);
+      var back = h('button', { 'class': 'btn', type: 'button', onclick: function () { step = 1; draw(); } }, ['Back']);
+      var save = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: function () {
+        save.disabled = true;
+        request('PUT', '/api/tracked', { campaigns: Object.keys(chosen).map(function (id) { return chosen[id]; }) })
+          .then(function (o) { overlay.remove(); apply(o); setNotice('ok', o.tracked.length + ' campaign' + (o.tracked.length === 1 ? '' : 's') + ' on the dashboard. Press Refresh to pull their numbers now.'); }, function (err) { save.disabled = false; say('error', err.message); });
+      } }, ['Save to dashboard']);
+      panel.appendChild(search); panel.appendChild(list);
+      panel.appendChild(h('div', { 'class': 'picker__manual' }, [manualId, manualName, manualAdd]));
+      panel.appendChild(h('div', { 'class': 'picker__foot' }, [h('div', { 'class': 'btn-row' }, [back, countEl]), save]));
+      drawList();
+    }
     document.body.appendChild(overlay);
-    draw(); search.focus();
+    draw();
   }
 
   // ---- page ----
@@ -277,7 +361,7 @@
   function setNotice(kind, text) { notice.hidden = !text; notice.className = 'notice' + (kind ? ' notice--' + kind : ''); notice.lastChild.textContent = text || ''; }
   var body = h('div', {});
   var refreshBtn = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: doRefresh }, ['Refresh']);
-  var chooseBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openPicker(data); } }, ['Choose campaigns']);
+  var chooseBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openPicker(); } }, ['Choose campaigns']);
   var subtitle = h('div', { 'class': 'muted' });
   root.appendChild(h('div', { 'class': 'perf-toolbar' }, [h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]), h('div', { 'class': 'btn-row' }, [chooseBtn, refreshBtn])]));
   root.appendChild(notice);
@@ -295,8 +379,8 @@
     if (!d.tracked.length) {
       body.appendChild(h('div', { 'class': 'card perf-empty' }, [
         h('h3', { text: 'No campaigns tracked yet' }),
-        h('p', { 'class': 'muted', text: 'Press "Choose campaigns", tick the Meta campaigns you want on this page, then Refresh. Hermes pulls only those campaigns, at 8:00 and 15:00 Adelaide time and whenever you press Refresh.' }),
-        d.catalog.items.length ? null : h('p', { 'class': 'muted', text: 'The list of campaigns to choose from comes from Hermes. Ask it: "Send my Meta campaigns to AdBuilder: PUT ' + location.origin + '/api/v1/meta with { campaigns: [{ id, name, adAccountId, adAccountName, status, objective }] } using the ADBUILDER_API_KEY." You can also add a campaign by ID.' })
+        h('p', { 'class': 'muted', text: 'Press "Choose campaigns", then Refresh. Hermes pulls only the chosen campaigns, at 8:00 and 15:00 Adelaide time and whenever you press Refresh.' }),
+        h('p', { 'class': 'muted', text: 'Step 1 picks the ad accounts, step 2 asks Hermes for their campaign list, step 3 ticks what shows here.' })
       ]));
       return;
     }
