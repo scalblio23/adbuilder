@@ -42,7 +42,7 @@ Open http://localhost:8080. Without a database, accounts go to `data/ad-accounts
 
 The Ad Builder tab creates campaign drafts in nine steps: ad copy, headlines, destination
 (landing page or instant lead form), targeting, ad account, creatives (upload up to 3.5 MB
-each or link by URL), ad sets (which ads run where, with their own targeting), the lead form
+each, paste links one per line, or pick from the swipe file), ad sets (which ads run where, with their own targeting), the lead form
 builder (greeting, custom questions with conditional logic, contact details, privacy policy,
 thank-you page), and landing page settings (pixel, conversion objective and event). Drafts
 autosave to the server and are shared with the team.
@@ -87,6 +87,14 @@ existing record as an alias. `GET /api/v1/swipes` returns saved IDs and hashes s
 skip work. The page renders images and videos, filters by advertiser, media type, and active
 state, searches copy, and lets you rank, toggle active, or delete. Meta-style field names
 (`page_name`, `media_url`, `is_active`) are accepted.
+
+### Creative links
+
+In step 6, paste one URL per line into the Creative links box. Each line is added as a creative
+automatically; removing a line detaches it from the campaign. Google Drive share links are
+converted to direct download links (with a thumbnail) and Dropbox links get `dl=1`, so Hermes can
+fetch the files. Share Drive and Dropbox files with "anyone with the link". Files over 3.5 MB
+should be linked this way rather than uploaded.
 
 ## AI brain
 

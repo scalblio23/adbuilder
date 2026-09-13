@@ -110,6 +110,7 @@
   function defaults() {
     return {
       brief: '',
+      creativeLinks: '',
       copy: [''], headlines: [''],
       destination: 'landing', landingUrl: '',
       targeting: { locations: '', ageMin: 18, ageMax: 65, gender: 'all', mode: 'advantage', interests: '' },
@@ -380,11 +381,38 @@
     ]);
   }
 
+  // ---- Creative links: one URL per line, added automatically ----
+  function parseLink(raw) {
+    var url = String(raw || '').trim();
+    if (!/^https?:\/\//i.test(url)) return null;
+    var out = { original: url, url: url, previewUrl: '', name: '', mime: '' };
+    var m;
+    if ((m = /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]+)/i.exec(url)) || (m = /drive\.google\.com\/.*[?&]id=([\w-]+)/i.exec(url))) {
+      out.url = 'https://drive.google.com/uc?export=download&id=' + m[1];
+      out.previewUrl = 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600';
+      out.name = 'Google Drive ' + m[1].slice(0, 8);
+    } else if (/dropbox\.com\//i.test(url)) {
+      out.url = url.replace(/[?&]dl=0/, function (q) { return q.charAt(0) + 'dl=1'; });
+      if (!/dl=1/.test(out.url)) out.url += (out.url.indexOf('?') === -1 ? '?' : '&') + 'dl=1';
+      out.name = decodeURIComponent((url.split('?')[0].split('/').pop() || 'Dropbox file'));
+    } else {
+      out.name = decodeURIComponent((url.split('?')[0].split('/').pop() || url.replace(/^https?:\/\//, '').split('/')[0]));
+    }
+    var ext = (out.original.split('?')[0].match(/\.(mp4|mov|webm|m4v|png|jpe?g|gif|webp)$/i) || [])[1];
+    if (ext) { out.mime = /mp4|mov|webm|m4v/i.test(ext) ? 'video/link' : 'image/link'; if (out.mime === 'image/link' && !out.previewUrl) out.previewUrl = out.url; }
+    return out;
+  }
+  function parseLinks(text) {
+    var seen = {}, out = [];
+    String(text || '').split(/\r?\n/).forEach(function (line) { var p = parseLink(line); if (p && !seen[p.url]) { seen[p.url] = true; out.push(p); } });
+    return out;
+  }
+
   function step6() {
     var d = camp.data;
     var grid = h('div', { 'class': 'creatives' });
     var status = h('div', { 'class': 'progress' });
-    function shown() { return library.filter(function (c) { return c.source !== 'meta_ad_library' || d.creativeIds.indexOf(c.id) !== -1; }); }
+    function shown() { return library.filter(function (c) { return (c.source !== 'meta_ad_library' && c.source !== 'link') || d.creativeIds.indexOf(c.id) !== -1; }); }
     function drawGrid() {
       grid.innerHTML = '';
       var list = shown();
@@ -392,7 +420,8 @@
       list.forEach(function (c) {
         var on = d.creativeIds.indexOf(c.id) !== -1;
         var thumb;
-        if (/^image\//.test(c.mime || '')) thumb = h('img', { 'class': 'creative__thumb', src: '/api/creatives/' + c.id, alt: c.name, loading: 'lazy' });
+        if (c.previewUrl) thumb = h('img', { 'class': 'creative__thumb', src: c.previewUrl, alt: c.name, loading: 'lazy', onerror: function (e) { e.target.replaceWith(h('div', { 'class': 'creative__thumb creative__thumb--icon', text: '🔗' })); } });
+        else if (/^image\//.test(c.mime || '')) thumb = h('img', { 'class': 'creative__thumb', src: '/api/creatives/' + c.id, alt: c.name, loading: 'lazy' });
         else if (/^video\//.test(c.mime || '')) thumb = h('div', { 'class': 'creative__thumb creative__thumb--icon', text: '▶' });
         else thumb = h('div', { 'class': 'creative__thumb creative__thumb--icon', text: '🔗' });
         var tile = h('div', { 'class': 'creative' + (on ? ' is-on' : ''), title: c.url || c.name, onclick: function () {
@@ -412,6 +441,12 @@
           h('button', { type: 'button', 'class': 'creative__del', text: '✕', title: c.source === 'meta_ad_library' ? 'Remove from this campaign (stays in the swipe file)' : 'Delete from library', onclick: function (e) {
             e.stopPropagation();
             d.creativeIds = d.creativeIds.filter(function (id) { return id !== c.id; });
+            if (c.source === 'link') {
+              // Drop the matching line from the links box so it is not re-added.
+              d.creativeLinks = String(d.creativeLinks || '').split(/\r?\n/).filter(function (line) { var p = parseLink(line); return !p || p.url !== c.url; }).join('\n');
+              var boxEl = root.querySelector('#step-6 textarea'); if (boxEl) boxEl.value = d.creativeLinks;
+              drawGrid(); dirty(); refreshAdSets(); return;
+            }
             if (c.source === 'meta_ad_library') { drawGrid(); dirty(); refreshAdSets(); return; }
             library = library.filter(function (x) { return x.id !== c.id; });
             drawGrid(); dirty(); refreshAdSets();
@@ -458,19 +493,45 @@
         function (err) { status.textContent = 'Upload failed: ' + err.message; });
     }
 
-    // Add by URL
-    var urlName = h('input', { 'class': 'table__input', placeholder: 'Name' });
-    var urlValue = h('input', { 'class': 'table__input', type: 'url', placeholder: 'https://link-to-the-creative' });
-    var addUrl = smallBtn('Add by URL', 'btn--primary', function () {
-      if (!urlName.value.trim() || !urlValue.value.trim()) { status.textContent = 'Give the creative a name and a URL.'; return; }
-      request('POST', '/api/creatives', { name: urlName.value.trim(), url: urlValue.value.trim(), mime: /\.(mp4|mov|webm)(\?|$)/i.test(urlValue.value) ? 'video/link' : /\.(png|jpe?g|gif|webp)(\?|$)/i.test(urlValue.value) ? 'image/link' : '' })
-        .then(function (row) {
-          if (!library.some(function (x) { return x.id === row.id; })) library.push(row);
-          if (d.creativeIds.indexOf(row.id) === -1) d.creativeIds.push(row.id);
-          urlName.value = ''; urlValue.value = ''; status.textContent = 'Added.'; drawGrid(); dirty(); refreshAdSets(); },
-          function (err) { status.textContent = 'Could not add: ' + err.message; });
-    });
-    var byUrl = h('div', {}, [field('Name', urlName), field('URL', urlValue), addUrl]);
+    // Paste links, one per line. Each becomes a creative; removed lines are detached from the campaign.
+    var linkStatus = h('span', { 'class': 'field__hint' });
+    var linksBox = area(d.creativeLinks, 'https://drive.google.com/file/d/…\nhttps://www.dropbox.com/s/…/hero.mp4?dl=0\nhttps://cdn.example.com/ad.png', function (v) { d.creativeLinks = v; scheduleLinkSync(); }, 4);
+    var linkTimer = null;
+    function scheduleLinkSync() { clearTimeout(linkTimer); linkTimer = setTimeout(syncLinks, 800); }
+    linksBox.addEventListener('blur', function () { clearTimeout(linkTimer); syncLinks(); });
+    linksBox.addEventListener('paste', function () { setTimeout(function () { clearTimeout(linkTimer); syncLinks(); }, 50); });
+    function syncLinks() {
+      var wanted = parseLinks(d.creativeLinks);
+      var byUrl = {}; library.forEach(function (c) { if (c.url) byUrl[c.url] = c; });
+      var chain = Promise.resolve(); var added = 0;
+      wanted.forEach(function (p) {
+        chain = chain.then(function () {
+          var existing = byUrl[p.url];
+          if (existing) { if (d.creativeIds.indexOf(existing.id) === -1) d.creativeIds.push(existing.id); return; }
+          return request('POST', '/api/creatives', { name: p.name, url: p.url, mime: p.mime, previewUrl: p.previewUrl, source: 'link' }).then(function (row) {
+            if (!library.some(function (x) { return x.id === row.id; })) library.push(row);
+            byUrl[row.url] = row;
+            if (d.creativeIds.indexOf(row.id) === -1) d.creativeIds.push(row.id);
+            added++;
+          });
+        });
+      });
+      chain.then(function () {
+        // Lines removed from the box: detach those link creatives from this campaign.
+        var keep = {}; wanted.forEach(function (p) { keep[p.url] = true; });
+        d.creativeIds = d.creativeIds.filter(function (id) { var c = library.filter(function (x) { return x.id === id; })[0]; return !c || c.source !== 'link' || keep[c.url]; });
+        linkStatus.textContent = wanted.length ? wanted.length + ' link' + (wanted.length === 1 ? '' : 's') + ' in this campaign' + (added ? ', ' + added + ' new' : '') + '.' : '';
+        drawGrid(); dirty(); refreshAdSets();
+      }, function (err) { linkStatus.textContent = 'Could not add a link: ' + err.message; });
+    }
+    // On load, keep only link creatives whose line is still in the box.
+    (function reconcile() {
+      var keep = {}; parseLinks(d.creativeLinks).forEach(function (p) { keep[p.url] = true; });
+      var before = d.creativeIds.length;
+      d.creativeIds = d.creativeIds.filter(function (id) { var c = library.filter(function (x) { return x.id === id; })[0]; return !c || c.source !== 'link' || keep[c.url]; });
+      if (d.creativeIds.length !== before) dirty();
+    })();
+    var byUrl = h('div', {}, [field('Creative links', linksBox, 'One URL per line: Google Drive, Dropbox, or direct file links. Added automatically. Share Drive and Dropbox files with "anyone with the link" so Hermes can fetch them.'), linkStatus]);
 
     // Pick creatives from the swipe file
     var swipeBtn = btn('Add from swipe file', '', function () {
