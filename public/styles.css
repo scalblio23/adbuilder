@@ -701,7 +701,7 @@ a.adrow__name:hover { color: var(--accent); }
 .tile__delta--none { visibility: hidden; }
 .tile__spark { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34%; display: block; pointer-events: none; }
 .tile > * { position: relative; z-index: 1; }
-.tile__spark { z-index: 0; }
+.tile > .tile__spark { position: absolute; z-index: 0; }
 /* campaign cards: full width, switch on the left */
 .crow__main { grid-template-columns: auto minmax(200px, 1.1fr) minmax(0, 4fr) 120px 32px; }
 .crow.is-off { opacity: 0.55; }
