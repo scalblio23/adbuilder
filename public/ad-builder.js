@@ -869,7 +869,7 @@
         var done = function () { e.target.textContent = 'Copied'; setTimeout(function () { e.target.textContent = 'Copy route'; }, 1500); };
         if (navigator.clipboard) navigator.clipboard.writeText(yaml).then(done, function () { prompt('Hermes route', yaml); }); else prompt('Hermes route', yaml);
       });
-      routeBox.appendChild(h('div', { 'class': 'step__sub', text: 'Hermes route (add to ~/.hermes/config.yaml, then restart the gateway). Launch then POSTs to https://<your-tunnel>/webhooks/adbuilder and Hermes runs the brief as an agent task.', style: 'margin: 14px 0 6px' }));
+      routeBox.appendChild(h('div', { 'class': 'step__sub', text: 'Hermes route (add to the config.yaml Hermes runs with, then restart the gateway). Launch then POSTs to https://<your-hermes-host>/webhooks/adbuilder and Hermes runs the brief as an agent task.', style: 'margin: 14px 0 6px' }));
       routeBox.appendChild(h('div', { 'class': 'reply' }, [h('pre', { text: yaml }), h('div', { 'class': 'btn-row', style: 'margin-top: 8px' }, [copy])]));
     }
     var keyField = field('API key (only for Bearer / X-API-Key modes)', key);
@@ -877,7 +877,7 @@
     auth.addEventListener('change', syncAuthFields);
     var preset = smallBtn('Use Hermes webhook settings', '', function () {
       auth.value = 'hmac'; launchPath.value = ''; testMethod.value = 'POST'; testPath.value = '';
-      if (!url.value.trim()) url.placeholder = 'https://<your-tunnel>.ngrok.app/webhooks/adbuilder';
+      if (!url.value.trim()) url.placeholder = 'https://<your-hermes-host>/webhooks/adbuilder';
       syncAuthFields();
       setStatus('', 'Filled in for a Hermes webhook: enter the public webhook URL, Save, then Test connection.');
     });
@@ -982,11 +982,11 @@
     var advanced = h('details', { 'class': 'advanced' }, [
       h('summary', { text: 'Send to Hermes: webhook settings (Launch button, Refresh from Hermes)' }),
       status,
-      h('p', { 'class': 'muted', text: 'Hermes receives webhooks on its WEBHOOK_PORT (8644) and checks each request against its WEBHOOK_SECRET. Expose that port publicly (for example with ngrok), then enter the public URL and the secret here.', style: 'margin: 0 0 12px' }),
+      h('p', { 'class': 'muted', text: 'Hermes receives webhooks on its WEBHOOK_PORT (8644) and checks each request against the route secret. Enter the public address of the Hermes server, ending in /webhooks/adbuilder.', style: 'margin: 0 0 12px' }),
       secretBox,
       routeBox,
       h('div', { 'class': 'btn-row', style: 'margin: 12px 0' }, [preset]),
-      h('div', { 'class': 'field-row' }, [field('Hermes webhook URL', url, 'Full address ending in the route name, e.g. https://abc123.ngrok.app/webhooks/adbuilder'), keyField]),
+      h('div', { 'class': 'field-row' }, [field('Hermes webhook URL', url, 'Full address ending in the route name, e.g. https://your-hermes-host/webhooks/adbuilder'), keyField]),
       h('div', { 'class': 'field-row' }, [field('Send the secret as', auth), field('Launch path', launchPath, 'Leave blank when the URL already points at the webhook.')]),
       h('div', { 'class': 'field-row' }, [field('Test method', testMethod), field('Test path', testPath, 'GET calls it plainly; POST sends { prompt: "Connection test…" }.'), field('Public base URL for asset links', publicBase, 'Leave blank to use this site\'s address.')]),
       h('div', { 'class': 'btn-row' }, [saveBtn, testBtn]),
