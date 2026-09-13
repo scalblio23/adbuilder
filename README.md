@@ -109,6 +109,15 @@ primary text already typed) are listed in `AI_RULES.md` and inside the AI settin
 
 ## Campaigns tab (live numbers)
 
+**Direct Meta connection (recommended).** Paste a Meta access token with `ads_read` into the
+"Meta connection" card at the bottom of the Campaigns tab (or set `META_ACCESS_TOKEN`). The app
+then lists ad accounts and campaigns and pulls daily insights itself from the Marketing API,
+campaign level and ad level, on Refresh and on the twice-daily cron. A System User token from Meta
+Business Settings does not expire. The token is checked against `/me` before it is saved and is
+never sent to the browser. Results follow the campaign objective (leads, purchases, link clicks,
+reach, …). With no token the page falls back to asking Hermes, as described below.
+
+
 The Campaigns tab shows hand-picked Meta campaigns: metric cards at the top (revenue, profit,
 Facebook stats, revenue vs cost, leads) and one row per campaign underneath. Only the campaigns
 chosen there are ever pulled from Meta, to stay well inside the API rate limits.

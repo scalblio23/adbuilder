@@ -331,7 +331,7 @@
     // Step 1: which ad accounts
     function drawAccounts() {
       var accounts = data.accounts || [];
-      panel.appendChild(h('p', { 'class': 'muted', text: 'Which ad accounts do you want to pull campaigns from? Hermes lists the campaigns of the ticked accounts only.' }));
+      panel.appendChild(h('p', { 'class': 'muted', text: 'Which ad accounts do you want to pull campaigns from? ' + (data.source === 'meta' ? 'The campaigns of the ticked accounts are read straight from Meta.' : 'Hermes lists the campaigns of the ticked accounts only. Connect Meta on the Campaigns page for instant pulls.') }));
       var list = h('div', { 'class': 'picker__list' });
       var boxes = [];
       function countSel() { return Object.keys(chosenAccounts).filter(function (k) { return chosenAccounts[k]; }).length; }
@@ -352,7 +352,9 @@
         var ids = accounts.filter(function (a) { return chosenAccounts[a.id]; }).map(function (a) { return a.id; });
         waiting = true; syncAll();
         request('POST', '/api/tracked/sync', { accounts: ids }).then(function (r) {
-          requestedAt = r.sync.at; step = 2; draw();
+          requestedAt = r.sync.at;
+          if (r.sync.direct) { return request('GET', '/api/tracked').then(function (o) { data = o; waiting = false; step = 2; draw(); say('ok', 'Pulled ' + r.sync.count + ' campaign' + (r.sync.count === 1 ? '' : 's') + ' from Meta.'); }); }
+          step = 2; draw();
           say('ok', 'Hermes accepted the request and started a run. Campaigns appear below as it sends them (usually within a minute or two); checking every 10 seconds.');
           waitFor(function (o) { return o.catalog.syncedAt && o.catalog.syncedAt > requestedAt; },
             function () { waiting = false; if (step === 2) { draw(); say('ok', 'Campaign list updated ' + when(data.catalog.syncedAt) + '.'); } },
@@ -362,13 +364,14 @@
       var fetchAccounts = h('button', { 'class': 'btn', type: 'button', onclick: function () {
         fetchAccounts.disabled = true; fetchAccounts.textContent = 'Asking Hermes…';
         request('POST', '/api/tracked/sync', { accounts: [] }).then(function (r) {
+          if (r.sync.direct) { return request('GET', '/api/tracked').then(function (o) { data = o; draw(); say('ok', r.sync.count + ' ad account' + (r.sync.count === 1 ? '' : 's') + ' pulled from Meta.'); }); }
           say('ok', 'Hermes accepted the request (HTTP ' + r.sync.status + '). Ad accounts appear here as it sends them; checking every 10 seconds.');
           var before = (data.accounts || []).length;
           waitFor(function (o) { return (o.accounts || []).length > before; },
             function () { if (step === 1) { draw(); say('ok', 'Ad accounts received.'); } },
             function () { fetchAccounts.disabled = false; fetchAccounts.textContent = 'Fetch ad accounts from Hermes'; say('', 'No ad accounts from Hermes yet. Check the Hermes gateway log.'); }, 10000, 30);
         }, function (err) { fetchAccounts.disabled = false; fetchAccounts.textContent = 'Fetch ad accounts from Hermes'; say('error', err.message); });
-      } }, ['Fetch ad accounts from Hermes']);
+      } }, [data.source === 'meta' ? 'Fetch ad accounts from Meta' : 'Fetch ad accounts from Hermes']);
       var skip = h('button', { 'class': 'btn', type: 'button', onclick: function () { step = 2; draw(); } }, ['Skip: use campaigns already synced']);
       panel.appendChild(h('div', { 'class': 'picker__foot' }, [h('div', { 'class': 'btn-row' }, [fetchAccounts, skip]), pull]));
       syncAll();
@@ -377,6 +380,7 @@
     // What Hermes has and has not done, so a silent wait explains itself.
     function diagnostics() {
       var d = data, lines = [];
+      if (d.source === 'meta') { if (d.lastCatalogRequest) lines.push('Last pull from Meta: ' + when(d.lastCatalogRequest.at) + ', ' + d.lastCatalogRequest.count + ' ' + d.lastCatalogRequest.kind + '.'); return h('div', { 'class': 'diag' }, lines.map(function (t) { return h('div', { text: t }); })); }
       var req = d.lastCatalogRequest;
       if (req) lines.push('Last request to Hermes: ' + when(req.at) + ', HTTP ' + req.status + (req.reply && req.reply.status ? ', reply "' + req.reply.status + (req.reply.reason ? ' (' + req.reply.reason + ')' : '') + '"' : '') + (req.reply && req.reply.target ? ', reply goes to ' + req.reply.target : '') + '.');
       if (!d.hermesKeySet) lines.push('No ADBUILDER_API_KEY has been generated, so Hermes cannot send anything back. Generate one in the Hermes card on Ad Builder and give it to Hermes.');
@@ -473,15 +477,46 @@
   ]));
   root.appendChild(notice);
   root.appendChild(body);
+  // Meta connection: the access token the app pulls campaigns and stats with.
+  var metaStatus = h('div', { 'class': 'notice' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Loading…' })]);
+  function setMetaStatus(kind, t) { metaStatus.className = 'notice' + (kind ? ' notice--' + kind : ''); metaStatus.lastChild.textContent = t; }
+  var tokenIn = h('input', { 'class': 'table__input', type: 'password', autocomplete: 'off', placeholder: 'Meta access token (EAA…)' });
+  var tokenSave = h('button', { 'class': 'btn btn--primary', type: 'button' }, ['Save and check']);
+  var tokenRemove = h('button', { 'class': 'btn btn--danger', type: 'button', hidden: '' }, ['Remove']);
+  function drawMeta(mc) {
+    if (!mc) return;
+    tokenRemove.hidden = !mc.set || mc.source === 'env';
+    tokenIn.disabled = tokenSave.disabled = mc.source === 'env';
+    tokenIn.placeholder = mc.set ? 'Saved token ' + mc.masked + ' (paste a new one to replace)' : 'Meta access token (EAA…)';
+    setMetaStatus(mc.set ? 'ok' : '', mc.set
+      ? 'Connected to Meta' + (mc.user ? ' as ' + mc.user : '') + (mc.accounts != null ? ', ' + mc.accounts + ' ad account' + (mc.accounts === 1 ? '' : 's') : '') + (mc.checkedAt ? ', checked ' + when(mc.checkedAt) : '') + '. Pulls go straight to Meta; Hermes is not used for numbers.'
+      : 'Not connected. Paste a Meta access token (ads_read) to pull campaigns and numbers directly. Without it the page asks Hermes instead.');
+  }
+  tokenSave.addEventListener('click', function () {
+    var v = tokenIn.value.trim(); if (!v) { tokenIn.focus(); return; }
+    tokenSave.disabled = true; setMetaStatus('', 'Checking the token with Meta…');
+    request('PUT', '/api/meta/token', { token: v }).then(function (mc) { tokenIn.value = ''; drawMeta(mc); return load(); }, function (err) { setMetaStatus('error', err.message); }).then(function () { tokenSave.disabled = false; });
+  });
+  tokenRemove.addEventListener('click', function () {
+    if (!confirm('Remove the Meta token? Pulls will go through Hermes again.')) return;
+    request('DELETE', '/api/meta/token').then(function (mc) { drawMeta(mc); return load(); }, function (err) { setMetaStatus('error', err.message); });
+  });
+  root.appendChild(h('div', { 'class': 'card metacard' }, [
+    h('h2', { 'class': 'card__title', text: 'Meta connection' }),
+    h('p', { 'class': 'muted', text: 'A Meta access token lets this page list your ad accounts and campaigns and pull the numbers itself, on Refresh and at 8:00 and 15:00 Adelaide time. A System User token from Meta Business Settings does not expire; a token from Graph API Explorer lasts about two hours.' }),
+    metaStatus,
+    h('div', { 'class': 'metacard__row' }, [tokenIn, tokenSave, tokenRemove])
+  ]));
+  request('GET', '/api/meta/token').then(drawMeta, function () { setMetaStatus('error', 'Could not read the Meta connection.'); });
 
-  function apply(o) { data = o; render(); }
+  function apply(o) { data = o; render(); if (o && o.meta) drawMeta(o.meta); }
   function render() {
     var d = data;
     body.innerHTML = '';
     var cur = d.tracked.filter(function (t) { return t.stats && t.stats.currency; })[0];
     if (cur) currency = cur.stats.currency;
     var next = new Date(d.schedule.nextAt);
-    subtitle.textContent = d.tracked.length + ' tracked · data ' + (d.lastDataAt ? 'from ' + when(d.lastDataAt) : 'not received yet') + ' · next pull ' + next.toLocaleString('en-AU', { timeZone: 'Australia/Adelaide', weekday: 'short', hour: '2-digit', minute: '2-digit' }) + ' Adelaide' + (d.cronConfigured ? '' : ' (CRON_SECRET not set: scheduled pulls are off)');
+    subtitle.textContent = d.tracked.length + ' tracked · ' + (d.source === 'meta' ? 'direct from Meta' : 'via Hermes') + ' · data ' + (d.lastDataAt ? 'from ' + when(d.lastDataAt) : 'not received yet') + ' · next pull ' + next.toLocaleString('en-AU', { timeZone: 'Australia/Adelaide', weekday: 'short', hour: '2-digit', minute: '2-digit' }) + ' Adelaide' + (d.cronConfigured ? '' : ' (CRON_SECRET not set: scheduled pulls are off)');
     refreshBtn.disabled = !d.tracked.length;
     if (!d.tracked.length) {
       body.appendChild(h('div', { 'class': 'card perf-empty' }, [
@@ -496,7 +531,7 @@
     var sr = series(on, r);
     body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: r.label }), h('span', { 'class': 'muted', text: on.length + ' of ' + d.tracked.length + ' campaign' + (d.tracked.length === 1 ? '' : 's') + ' switched on · change vs the previous ' + sr.days + ' day' + (sr.days === 1 ? '' : 's') })]));
     body.appendChild(summaryCards(sr, r, on));
-    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: 'Switch a campaign off to leave it out of the numbers above · ' + (d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
+    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: 'Switch a campaign off to leave it out of the numbers above · ' + (d.source === 'meta' ? 'pulled straight from Meta' : d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
     d.tracked.forEach(function (t) { body.appendChild(campaignRow(t, r)); });
   }
   function load() { return request('GET', '/api/tracked').then(apply, function (err) { setNotice('error', 'Could not load: ' + err.message); }); }
@@ -515,8 +550,13 @@
     })();
   }
   function doRefresh() {
-    refreshBtn.disabled = true; refreshBtn.textContent = 'Asking Hermes…';
+    refreshBtn.disabled = true; refreshBtn.textContent = data && data.source === 'meta' ? 'Pulling from Meta…' : 'Asking Hermes…';
     request('POST', '/api/tracked/refresh').then(function (r) {
+      if (r.refresh.direct) {
+        var errs = r.refresh.errors || [];
+        setNotice(errs.length ? 'error' : 'ok', 'Pulled ' + r.refresh.stored + ' of ' + r.refresh.campaigns + ' campaign' + (r.refresh.campaigns === 1 ? '' : 's') + ' from Meta.' + (errs.length ? ' Failed: ' + errs.map(function (e) { return e.name + ' (' + e.error + ')'; }).join('; ') : ''));
+        return load();
+      }
       setNotice('ok', 'Hermes accepted the request (HTTP ' + r.refresh.status + ') for ' + r.refresh.campaigns + ' campaign' + (r.refresh.campaigns === 1 ? '' : 's') + '. Numbers appear here once it has pulled them; this page checks every 20 seconds.');
       pollForData(r.refresh.at);
       return load();
