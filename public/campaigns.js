@@ -196,7 +196,8 @@
   function labelFor(key, extra) { return (extra && extra[key]) || LABELS[key] || (key ? key.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Results'); }
   // The result key a campaign uses: its manual override, else what its ad sets optimise for.
   function resultKeyOf(t) { return t.resultOverride || (t.stats && t.stats.resultKey) || ''; }
-  function campaignResultLabel(t) { var k = resultKeyOf(t); return k ? labelFor(k, t.stats && t.stats.convLabels) : (t.stats && t.stats.resultType) || 'Results'; }
+  function allConvLabels() { var out = {}; ((data && data.tracked) || []).forEach(function (t) { Object.assign(out, (t.stats && t.stats.convLabels) || {}); }); return out; }
+  function campaignResultLabel(t) { var k = resultKeyOf(t); return k ? labelFor(k, allConvLabels()) : (t.stats && t.stats.resultType) || 'Results'; }
   // Old pulls have no per-day conversion breakdown; a result-type change then needs a fresh pull.
   function hasConv(t) { return ((t.stats && t.stats.daily) || []).some(function (d) { return d.conv; }); }
   // Daily rows with "results" recomputed for the chosen key (from the conversions each row carries).
@@ -384,7 +385,7 @@
     var optText = opt ? (opt.customConversionId ? 'custom conversion' : opt.event ? opt.event.toLowerCase().replace(/_/g, ' ') + ' event' : opt.goal.toLowerCase().replace(/_/g, ' ')) : '';
     var autoText = 'Auto: ' + ((st && st.resultType) || 'Results') + (optText ? ' (' + optText + ')' : '');
     var keys = Object.keys(totals).sort(function (a, b) { return (totals[b] || 0) - (totals[a] || 0) || a.localeCompare(b); });
-    var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(keys.map(function (k) { return h('option', { value: k, text: labelFor(k, st && st.convLabels) + (k === 'reach' ? '' : ' · ' + count(totals[k]) + ' in stored days') }); })));
+    var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(keys.map(function (k) { return h('option', { value: k, text: labelFor(k, allConvLabels()) + (k === 'reach' ? '' : ' · ' + count(totals[k]) + ' in stored days') }); })));
     resultSel.value = t.resultOverride || '';
     resultSel.addEventListener('change', function () {
       var chosen = resultSel.value;
