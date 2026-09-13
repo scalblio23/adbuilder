@@ -112,19 +112,47 @@ primary text already typed) are listed in `AI_RULES.md` and inside the AI settin
 The Hermes section at the bottom of the Ad Builder page handles both directions.
 
 **AdBuilder calling Hermes** (Launch button, Refresh from Hermes, Test connection): Hermes
-receives webhooks on `WEBHOOK_PORT` (8644) and verifies each request with `WEBHOOK_SECRET`.
+receives webhooks on `WEBHOOK_PORT` (8644) and verifies each request with the route's secret.
 In the Hermes card's "Send to Hermes" section, press "Generate secret": AdBuilder creates the
-`WEBHOOK_SECRET`, shows it once, and signs everything it sends with it. Paste it into Hermes
-(with `WEBHOOK_ENABLED=true`) and restart Hermes. Expose Hermes' port publicly (for example
-`ngrok http 8644`), enter the public webhook URL (e.g. `https://abc123.ngrok.app/webhooks/test`),
-Save, and Test connection.
-Requests are signed with HMAC SHA-256 over the exact body (`X-Hub-Signature-256: sha256=…`,
-GitHub style, plus `X-Signature-256`, `X-Webhook-Signature`, and a sha1 `X-Hub-Signature`) and
-carry `X-Event-Type` (`adbuilder.test` or `adbuilder.campaign.launch`). Bearer and X-API-Key
-modes remain for receivers that expect a plain key. Launch sends one `POST` with:
+`WEBHOOK_SECRET`, shows it once, and signs everything it sends with it. The card also shows the
+route to add to `~/.hermes/config.yaml` (copy it while the secret is visible):
+
+```yaml
+platforms:
+  webhook:
+    enabled: true
+    extra:
+      port: 8644
+      routes:
+        adbuilder:
+          secret: "<the generated WEBHOOK_SECRET>"
+          events: ["adbuilder.campaign.launch", "adbuilder.test"]
+          prompt: |
+            {prompt}
+
+            AdBuilder campaign ID: {campaignId}
+          toolsets: ["terminal", "file", "web"]   # add the toolset that holds your Meta Ads tools
+          deliver: "telegram"                     # telegram, discord, slack, … ("log" only writes to the gateway log)
+```
+
+Restart the Hermes gateway, expose its port publicly (for example `ngrok http 8644`), enter
+`https://<tunnel>/webhooks/adbuilder` as the webhook URL, Save, and Test connection. A webhook
+run never appears as a chat session in Hermes: the agent's reply is sent to the route's
+`deliver` target, so set that to the platform you talk to Hermes on. Webhook runs default to a
+read-only toolset; `toolsets` must include whatever Hermes needs to create Meta campaigns.
+
+Requests are signed with HMAC SHA-256 over the exact body, in both forms Hermes accepts:
+`X-Hub-Signature-256: sha256=…` (GitHub style) and `X-Webhook-Signature-V2` over
+`<timestamp>.<body>` with `X-Webhook-Timestamp`. Each request carries a unique `X-Request-ID`
+(and `X-GitHub-Delivery`) so a retry never starts a second run, plus `X-GitHub-Event` /
+`X-Event-Type` and a body field `event_type` (`adbuilder.test` or `adbuilder.campaign.launch`)
+for the route's `events` filter. Bearer and X-API-Key modes remain for receivers that expect a
+plain key. Launch sends one `POST` with:
 
 ```json
-{ "prompt": "<plain-language brief of the whole campaign>",
+{ "event_type": "adbuilder.campaign.launch",
+  "campaignId": "…",
+  "prompt": "<plain-language brief of the whole campaign>",
   "campaign": { ...structured data... },
   "assets": [ { "name": "hero.png", "type": "image", "url": "https://your-site/api/creatives/<id>" } ],
   "account": { "client": "...", "company": "...", "link": "..." } }
