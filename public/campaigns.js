@@ -350,6 +350,75 @@
     return grid;
   }
 
+  // ---- best creatives: every ad of the switched-on campaigns, ranked for the timeframe, five per page ----
+  var creativePage = 0, PAGE = 5;
+  function rankedCreatives(tracked, r) {
+    var out = [];
+    tracked.forEach(function (t) {
+      var key = t.resultOverride, rlabel = campaignResultLabel(t);
+      ((t.stats && t.stats.ads) || []).forEach(function (ad) {
+        var daily = inRange(withResults(ad.daily, key), r.since, r.until);
+        if (!daily.length) return;
+        var m = derive(sum(daily));
+        if (!m.spend) return;
+        out.push({ ad: ad, campaign: t, m: m, rlabel: rlabel, countable: countable(t) });
+      });
+    });
+    // Best first: lowest cost per result among ads with results, then most results, then most spend.
+    out.sort(function (a, b) {
+      var ac = a.countable && a.m.costPerResult != null, bc = b.countable && b.m.costPerResult != null;
+      if (ac && bc) return a.m.costPerResult - b.m.costPerResult || b.m.results - a.m.results;
+      if (ac !== bc) return ac ? -1 : 1;
+      return (b.m.results || 0) - (a.m.results || 0) || (b.m.spend || 0) - (a.m.spend || 0);
+    });
+    return out;
+  }
+  function creativeCard(item, rank) {
+    var ad = item.ad, m = item.m;
+    var src = ad.imageUrl || ad.thumbnailUrl;
+    var img = src ? h('img', { 'class': 'bc__img', src: src, alt: '', loading: 'lazy', decoding: 'async' }) : h('div', { 'class': 'bc__img bc__img--none', text: 'No preview' });
+    var frame = ad.previewUrl ? h('a', { 'class': 'bc__frame', href: ad.previewUrl, target: '_blank', rel: 'noopener', title: 'Open in Meta' }, [img]) : h('div', { 'class': 'bc__frame' }, [img]);
+    var stat = function (v, label, cls) { return h('div', { 'class': 'bc__stat' }, [h('span', { 'class': 'bc__label', text: label }), h('span', { 'class': 'bc__num ' + (cls || ''), text: v })]); };
+    return h('div', { 'class': 'card bc' + (rank === 1 ? ' is-top' : '') }, [
+      h('div', { 'class': 'bc__rank mono', text: pad(rank) }),
+      frame,
+      h('div', { 'class': 'bc__name', title: ad.name, text: ad.name }),
+      h('div', { 'class': 'bc__meta', text: item.campaign.name + (ad.adSetName ? ' · ' + ad.adSetName : '') }),
+      h('div', { 'class': 'bc__stats' }, [
+        stat(money(m.cpm), 'CPM'),
+        stat(count(m.results), item.rlabel),
+        stat(money(m.cplc), 'CPLC'),
+        stat(pct(m.ctrAll), 'CTR (all)'),
+        stat(money(m.costPerResult), 'Cost per result', m.costPerResult != null ? 'is-pos' : '')
+      ])
+    ]);
+  }
+  function bestCreatives(tracked, r) {
+    var items = rankedCreatives(tracked, r);
+    var pages = Math.max(1, Math.ceil(items.length / PAGE));
+    if (creativePage >= pages) creativePage = pages - 1;
+    if (creativePage < 0) creativePage = 0;
+    var wrap = h('div', { 'class': 'bestc' });
+    var grid = h('div', { 'class': 'bestc-grid' });
+    var counter = h('span', { 'class': 'mono' });
+    var prev = h('button', { 'class': 'btn bc-nav', type: 'button', title: 'Previous 5' }, ['‹']);
+    var next = h('button', { 'class': 'btn bc-nav', type: 'button', title: 'Next 5' }, ['›']);
+    function draw() {
+      grid.innerHTML = '';
+      var start = creativePage * PAGE;
+      items.slice(start, start + PAGE).forEach(function (it, i) { grid.appendChild(creativeCard(it, start + i + 1)); });
+      if (!items.length) grid.appendChild(h('p', { 'class': 'muted', text: 'No ad-level rows in this timeframe yet. Press Refresh to pull them.' }));
+      counter.textContent = items.length ? (start + 1) + '–' + Math.min(start + PAGE, items.length) + ' of ' + items.length : '0';
+      prev.disabled = creativePage === 0; next.disabled = creativePage >= pages - 1;
+    }
+    prev.addEventListener('click', function () { creativePage--; draw(); });
+    next.addEventListener('click', function () { creativePage++; draw(); });
+    wrap.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Best creatives' }), h('span', { 'class': 'bc-head__right' }, [h('span', { 'class': 'muted', text: r.label + ' · ranked by cost per result · ' }), counter, prev, next])]));
+    wrap.appendChild(grid);
+    draw();
+    return wrap;
+  }
+
   // ---- campaign rows ----
   function statusBadge(st) {
     var t = String(st || '').toUpperCase();
@@ -693,7 +762,7 @@
   function saveFrame() { try { localStorage.setItem('adbuilder.timeframe', JSON.stringify(frame)); } catch (e) {} }
   frameSel.value = frame.preset; sinceIn.value = frame.since || ''; untilIn.value = frame.until || '';
   customBox.hidden = frame.preset !== 'custom';
-  frameSel.addEventListener('change', function () { frame.preset = frameSel.value; customBox.hidden = frame.preset !== 'custom'; if (frame.preset === 'custom' && !frame.since) { frame.since = dayKey(6); frame.until = dayKey(0); sinceIn.value = frame.since; untilIn.value = frame.until; } saveFrame(); if (data) render(); });
+  frameSel.addEventListener('change', function () { creativePage = 0; frame.preset = frameSel.value; customBox.hidden = frame.preset !== 'custom'; if (frame.preset === 'custom' && !frame.since) { frame.since = dayKey(6); frame.until = dayKey(0); sinceIn.value = frame.since; untilIn.value = frame.until; } saveFrame(); if (data) render(); });
   [sinceIn, untilIn].forEach(function (inp) { inp.addEventListener('change', function () { frame.since = sinceIn.value; frame.until = untilIn.value; saveFrame(); if (data) render(); }); });
   root.appendChild(h('div', { 'class': 'perf-toolbar' }, [
     h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]),
@@ -756,6 +825,7 @@
     body.appendChild(h('div', { 'class': 'con__head mono' }, [h('span', { text: 'Campaigns · ' + pad(on.length) + ' / ' + pad(d.tracked.length) + ' on' }), h('span', { text: r.label + ' · ' + (d.source === 'meta' ? 'direct from Meta' : 'via Hermes') + ' · vs previous ' + sr.days + ' day' + (sr.days === 1 ? '' : 's') })]));
     body.appendChild(hero(sr, r, on));
     body.appendChild(summaryCards(sr, r, on));
+    body.appendChild(bestCreatives(on, r));
     body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: 'Switch a campaign off to leave it out of the numbers above · ' + (d.source === 'meta' ? 'pulled straight from Meta' : d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
     d.tracked.forEach(function (t) { body.appendChild(campaignRow(t, r)); });
   }
