@@ -72,7 +72,7 @@
     { g: 'Clicks', key: 'costPerLpv', label: 'Cost per landing page view', fmt: money, low: true, color: '#e0a52b' },
     { g: 'Conversions', key: 'leads', label: 'Leads', fmt: count, color: '#3ec27a' },
     { g: 'Conversions', key: 'cpl', label: 'Cost per lead', fmt: money, low: true, color: '#e0a52b' },
-    { g: 'Conversions', key: 'conv.schedule', label: 'Schedules', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'conv.schedule', label: 'Website schedules', fmt: count, color: '#3ec27a' },
     { g: 'Conversions', key: 'costPerSchedule', label: 'Cost per schedule', fmt: money, low: true, color: '#e0a52b' },
     { g: 'Conversions', key: 'purchases', label: 'Purchases', fmt: count, color: '#3ec27a' },
     { g: 'Conversions', key: 'costPerSale', label: 'Cost per purchase', fmt: money, low: true, color: '#e0a52b' },
@@ -192,7 +192,7 @@
     return { rows: rows, current: derive(current), previous: hasPrev ? derive(sum(prevRows)) : null, anyDaily: anyDaily, days: r.dates.length };
   }
   function delta(cur, prev, key) { if (!prev || !prev[key]) return null; return (cur[key] - prev[key]) / Math.abs(prev[key]); }
-  var LABELS = { lead: 'Leads', schedule: 'Schedules', purchase: 'Purchases', contact: 'Contacts', complete_registration: 'Registrations', submit_application: 'Applications', start_trial: 'Trials', subscribe: 'Subscriptions', add_to_cart: 'Adds to cart', initiate_checkout: 'Checkouts', add_payment_info: 'Payment info', search: 'Searches', view_content: 'Content views', find_location: 'Location finds', customize_product: 'Customisations', donate: 'Donations', link_click: 'Link clicks', landing_page_view: 'Landing page views', messaging: 'Conversations', thruplay: 'ThruPlays', app_install: 'App installs', post_engagement: 'Engagements', reach: 'Reach', impressions: 'Impressions' };
+  var LABELS = { lead: 'Leads', schedule: 'Website schedules', purchase: 'Purchases', contact: 'Contacts', complete_registration: 'Registrations', submit_application: 'Applications', start_trial: 'Trials', subscribe: 'Subscriptions', add_to_cart: 'Adds to cart', initiate_checkout: 'Checkouts', add_payment_info: 'Payment info', search: 'Searches', view_content: 'Content views', find_location: 'Location finds', customize_product: 'Customisations', donate: 'Donations', link_click: 'Link clicks', landing_page_view: 'Landing page views', messaging: 'Conversations', thruplay: 'ThruPlays', app_install: 'App installs', post_engagement: 'Engagements', reach: 'Reach', impressions: 'Impressions' };
   function labelFor(key, extra) { return (extra && extra[key]) || LABELS[key] || (key ? key.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Results'); }
   // The result key a campaign uses: its manual override, else what its ad sets optimise for.
   function resultKeyOf(t) { return t.resultOverride || (t.stats && t.stats.resultKey) || ''; }
