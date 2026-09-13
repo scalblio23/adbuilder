@@ -42,40 +42,71 @@
   function ago(ts) { if (!ts) return 'never'; var m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; }
 
   // ---- numbers ----
-  var KEYS = ['spend', 'revenue', 'purchases', 'leads', 'newLeads', 'clicks', 'impressions', 'reach', 'calls', 'refunds', 'refundAmount'];
+  var KEYS = ['spend', 'impressions', 'reach', 'clicksAll', 'linkClicks', 'results', 'revenue', 'purchases', 'leads', 'newLeads', 'calls'];
   function derive(m) {
     m = m || {};
     var out = Object.assign({}, m);
-    out.profit = (m.revenue || 0) - (m.spend || 0);
+    var link = m.linkClicks != null ? m.linkClicks : null;
+    var all = m.clicksAll != null ? m.clicksAll : null;
+    out.cpm = m.impressions ? (m.spend || 0) / m.impressions * 1000 : null;
+    out.cplc = link ? (m.spend || 0) / link : null;
+    out.ctrAll = all != null && m.impressions ? all / m.impressions : null;
+    out.linkCtr = link != null && m.impressions ? link / m.impressions : null;
+    out.frequency = m.reach ? (m.impressions || 0) / m.reach : null;
+    out.costPerResult = m.results ? (m.spend || 0) / m.results : null;
+    out.profit = m.revenue != null ? m.revenue - (m.spend || 0) : null;
     out.roas = div(m.revenue, m.spend);
-    out.roi = m.spend ? (out.profit / m.spend) : null;
-    out.ctr = div(m.clicks, m.impressions);
-    out.cpc = div(m.spend, m.clicks);
-    out.cpm = m.impressions ? (m.spend / m.impressions) * 1000 : null;
     out.cpl = div(m.spend, m.leads);
-    out.cpnl = div(m.spend, m.newLeads);
     out.costPerSale = div(m.spend, m.purchases);
     return out;
   }
   function sum(list) { var out = {}; list.forEach(function (m) { KEYS.forEach(function (k) { if (m && m[k] != null) out[k] = (out[k] || 0) + m[k]; }); }); return out; }
-  function dayKey(offset) { return new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10); }
-  // Aligns every campaign's daily numbers on the same 30 day window (and the 30 before it, for the change).
-  function series(tracked) {
-    var dates = [], prev = [];
-    for (var i = 29; i >= 0; i--) dates.push(dayKey(i));
-    for (var j = 59; j >= 30; j--) prev.push(dayKey(j));
-    var byDate = {};
-    var anyDaily = false;
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function dayKey(offset) { var d = new Date(); d.setDate(d.getDate() - offset); return iso(d); }
+  // ---- timeframe ----
+  var PRESETS = [['today', 'Today'], ['yesterday', 'Yesterday'], ['7', 'Last 7 days'], ['14', 'Last 14 days'], ['30', 'Last 30 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['max', 'Maximum (60 days)'], ['custom', 'Custom…']];
+  var frame = { preset: '7', since: '', until: '' };
+  try { var savedFrame = JSON.parse(localStorage.getItem('adbuilder.timeframe') || 'null'); if (savedFrame && savedFrame.preset) frame = savedFrame; } catch (e) {}
+  function rangeOf(f) {
+    var now = new Date(), since, until = iso(now);
+    if (f.preset === 'today') since = until;
+    else if (f.preset === 'yesterday') { since = until = dayKey(1); }
+    else if (f.preset === 'month') since = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+    else if (f.preset === 'lastmonth') { since = iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)); until = iso(new Date(now.getFullYear(), now.getMonth(), 0)); }
+    else if (f.preset === 'max') since = dayKey(59);
+    else if (f.preset === 'custom' && /^\d{4}-\d{2}-\d{2}$/.test(f.since)) { since = f.since; until = /^\d{4}-\d{2}-\d{2}$/.test(f.until) ? f.until : until; }
+    else since = dayKey(Number(f.preset || 7) - 1);
+    if (since > until) { var t = since; since = until; until = t; }
+    var dates = [], d = new Date(since + 'T00:00:00');
+    while (iso(d) <= until && dates.length < 366) { dates.push(iso(d)); d.setDate(d.getDate() + 1); }
+    var len = dates.length;
+    var prevEnd = new Date(since + 'T00:00:00'); prevEnd.setDate(prevEnd.getDate() - 1);
+    var prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - (len - 1));
+    return { since: since, until: until, dates: dates, prevSince: iso(prevStart), prevUntil: iso(prevEnd), label: since === until ? dateLabel(since) : dateLabel(since) + ' – ' + dateLabel(until) };
+  }
+  function inRange(daily, since, until) { return (daily || []).filter(function (d) { return d.date >= since && d.date <= until; }); }
+  // Totals for a set of daily rows over the current timeframe, aligned per date for the charts.
+  function series(tracked, r) {
+    var byDate = {}, anyDaily = false, prevRows = [];
     tracked.forEach(function (t) {
-      ((t.stats && t.stats.daily) || []).forEach(function (d) { anyDaily = true; byDate[d.date] = byDate[d.date] || []; byDate[d.date].push(d); });
+      ((t.stats && t.stats.daily) || []).forEach(function (d) {
+        anyDaily = true;
+        if (d.date >= r.since && d.date <= r.until) { (byDate[d.date] = byDate[d.date] || []).push(d); }
+        else if (d.date >= r.prevSince && d.date <= r.prevUntil) prevRows.push(d);
+      });
     });
-    function rows(list) { return list.map(function (d) { return Object.assign({ date: d }, sum(byDate[d] || [])); }); }
-    var cur = rows(dates), before = rows(prev);
-    var hasPrev = before.some(function (r) { return Object.keys(r).length > 1; });
-    var current = anyDaily ? sum(cur) : sum(tracked.map(function (t) { return t.stats && t.stats.metrics; }));
-    return { dates: dates, rows: cur, current: derive(current), previous: hasPrev ? derive(sum(before)) : null, anyDaily: anyDaily };
+    var rows = r.dates.map(function (d) { return Object.assign({ date: d }, sum(byDate[d] || [])); });
+    var current = anyDaily ? sum(rows) : sum(tracked.map(function (t) { return t.stats && t.stats.metrics; }));
+    var hasPrev = prevRows.length > 0;
+    return { rows: rows, current: derive(current), previous: hasPrev ? derive(sum(prevRows)) : null, anyDaily: anyDaily, days: r.dates.length };
   }
   function delta(cur, prev, key) { if (!prev || !prev[key]) return null; return (cur[key] - prev[key]) / Math.abs(prev[key]); }
+  function resultLabel(list) {
+    var types = {}; list.forEach(function (t) { var rt = t.stats && t.stats.resultType; if (rt) types[rt] = (types[rt] || 0) + 1; });
+    var keys = Object.keys(types).sort(function (a, b) { return types[b] - types[a]; });
+    return keys.length === 1 ? keys[0] : keys.length ? 'Results (mixed)' : 'Results';
+  }
 
   // ---- charts (inline SVG, hover crosshair + tooltip) ----
   function chart(rows, lines, opts) {
@@ -85,17 +116,17 @@
     var max = 0; lines.forEach(function (l) { rows.forEach(function (r) { max = Math.max(max, r[l.key] || 0); }); });
     if (!max) max = 1;
     var nice = Math.pow(10, Math.floor(Math.log10(max))); var top = Math.ceil(max / nice) * nice; if (top / max > 1.6) top = Math.ceil(max / (nice / 2)) * (nice / 2);
-    var x = function (i) { return padL + (n > 1 ? (W - padL - padR) * i / (n - 1) : 0); };
+    var x = function (i) { return padL + (n > 1 ? (W - padL - padR) * i / (n - 1) : (W - padL - padR) / 2); };
     var y = function (v) { return padT + (H - padT - padB) * (1 - (v || 0) / top); };
     var svg = s('svg', { viewBox: '0 0 ' + W + ' ' + H, 'class': 'chart', role: 'img', 'aria-label': opts.label || 'chart' });
     var ticks = 4;
     for (var t = 0; t <= ticks; t++) {
       var v = top * t / ticks, yy = y(v);
       svg.appendChild(s('line', { x1: padL, x2: W - padR, y1: yy, y2: yy, 'class': 'chart__grid' }));
-      svg.appendChild(s('text', { x: padL - 6, y: yy + 3, 'class': 'chart__tick', 'text-anchor': 'end', text: (opts.money ? symbol() : '') + compact(v) }));
+      svg.appendChild(s('text', { x: padL - 6, y: yy + 3, 'class': 'chart__tick', 'text-anchor': 'end', text: (opts.money ? symbol() : '') + compact(v) + (opts.pct ? '%' : '') }));
     }
     var labelEvery = Math.max(1, Math.ceil(n / 5));
-    rows.forEach(function (r, i) { if (i % labelEvery === 0) svg.appendChild(s('text', { x: x(i), y: H - 8, 'class': 'chart__tick', 'text-anchor': i === 0 ? 'start' : 'middle', text: dateLabel(r.date) })); });
+    rows.forEach(function (r, i) { if (i % labelEvery === 0) svg.appendChild(s('text', { x: x(i), y: H - 8, 'class': 'chart__tick', 'text-anchor': i === 0 ? 'start' : n === 1 ? 'start' : 'middle', text: dateLabel(r.date) })); });
     lines.forEach(function (l, li) {
       var pts = rows.map(function (r, i) { return x(i).toFixed(1) + ',' + y(r[l.key]).toFixed(1); });
       if (l.area) {
@@ -123,7 +154,7 @@
       lines.forEach(function (l, li) { dots[li].setAttribute('cx', x(i)); dots[li].setAttribute('cy', y(r[l.key])); dots[li].setAttribute('visibility', 'visible'); });
       tip.innerHTML = '';
       tip.appendChild(h('div', { 'class': 'chart__tipdate', text: dateLabel(r.date) }));
-      lines.forEach(function (l) { tip.appendChild(h('div', { 'class': 'chart__tiprow' }, [h('span', { 'class': 'chart__swatch', style: 'background:' + l.color }), h('span', { text: l.name }), h('b', { text: l.money ? money(r[l.key] || 0) : count(r[l.key] || 0) })])); });
+      lines.forEach(function (l) { tip.appendChild(h('div', { 'class': 'chart__tiprow' }, [h('span', { 'class': 'chart__swatch', style: 'background:' + l.color }), h('span', { text: l.name }), h('b', { text: l.money ? money(r[l.key] || 0) : opts.pct ? ratio(r[l.key] || 0) + '%' : count(r[l.key] || 0) })])); });
       tip.hidden = false;
       var left = x(i) / W * box.width; tip.style.left = Math.min(box.width - 140, Math.max(0, left + 10)) + 'px';
     }
@@ -147,42 +178,46 @@
   function big(value, label, cls) { return h('div', { 'class': 'perf__big' }, [h('div', { 'class': 'perf__value ' + (cls || ''), text: value }), label ? h('div', { 'class': 'perf__label', text: label }) : null]); }
   function cell(value, label, cls) { return h('div', { 'class': 'perf__cell' }, [h('div', { 'class': 'perf__num ' + (cls || ''), text: value }), h('div', { 'class': 'perf__label', text: label })]); }
   function block(children, cls) { return h('div', { 'class': 'perf__block ' + (cls || '') }, children); }
-  function deltaTag(v) {
+  function deltaTag(v, lowerIsBetter) {
     if (v == null) return null;
-    return h('span', { 'class': 'perf__delta ' + (v >= 0 ? 'is-up' : 'is-down'), text: (v >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(v)) });
+    var good = lowerIsBetter ? v <= 0 : v >= 0;
+    return h('span', { 'class': 'perf__delta ' + (good ? 'is-up' : 'is-down'), title: 'vs the previous period', text: (v >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(v)) });
   }
-  function summaryCards(sr) {
+  function summaryCards(sr, r, tracked) {
     var c = sr.current, p = sr.previous;
-    var GREY = '#d9d9d9', RED = '#e5534b', BLUE = '#7aa7ff';
-    var revenue = h('div', { 'class': 'card perf perf--revenue' }, [
-      cardHead('Total Revenue', '↗'),
-      block([h('div', { 'class': 'perf__hero' }, [h('span', { 'class': 'perf__value', text: money(c.revenue || 0) }), deltaTag(delta(c, p, 'revenue'))]), h('div', { 'class': 'perf__sub', text: 'Cost: ' + money(c.spend || 0) })]),
-      sr.anyDaily ? chart(sr.rows, [{ key: 'revenue', name: 'Revenue', color: GREY, area: true, money: true }], { money: true, label: 'Daily revenue, last 30 days' }) : h('p', { 'class': 'muted perf__nodaily', text: 'Daily numbers appear after the next refresh.' })
+    var GREY = '#d9d9d9', RED = '#e5534b', BLUE = '#7aa7ff', GREEN = '#3ec27a';
+    var rlabel = resultLabel(tracked);
+    var nodaily = function () { return h('p', { 'class': 'muted perf__nodaily', text: 'Daily numbers appear after the next refresh.' }); };
+    var spend = h('div', { 'class': 'card perf perf--spend' }, [
+      cardHead('Amount Spent', '$'),
+      block([h('div', { 'class': 'perf__hero' }, [h('span', { 'class': 'perf__value', text: money(c.spend || 0) }), deltaTag(delta(c, p, 'spend'), true)]), h('div', { 'class': 'perf__sub', text: r.label + ' · ' + count(c.impressions) + ' impressions' })]),
+      sr.anyDaily ? chart(sr.rows, [{ key: 'spend', name: 'Spent', color: GREY, area: true, money: true }], { money: true, label: 'Amount spent per day' }) : nodaily()
     ]);
-    var totals = h('div', { 'class': 'card perf perf--totals' }, [
-      cardHead('Total Stats', '▤'),
-      block([big(money(c.profit), 'Profit', c.profit < 0 ? 'is-neg' : '')]),
-      block([h('div', { 'class': 'perf__grid' }, [cell(ratio(c.roas), 'ROAS'), cell(money(c.spend || 0), 'Cost'), cell(count(c.clicks), 'Clicks'), cell(money(c.costPerSale), 'Cost per sale'), cell(count(c.purchases), 'Sales'), cell(money(c.cpl), 'Cost per lead')])])
+    var results = h('div', { 'class': 'card perf perf--results' }, [
+      cardHead(rlabel, '◎'),
+      block([h('div', { 'class': 'perf__hero' }, [h('span', { 'class': 'perf__value', text: count(c.results) }), deltaTag(delta(c, p, 'results'))]), h('div', { 'class': 'perf__sub', text: 'Cost per result ' + money(c.costPerResult) })]),
+      sr.anyDaily ? chart(sr.rows, [{ key: 'results', name: rlabel, color: GREEN, area: true }], { label: 'Results per day' }) : nodaily()
     ]);
-    var fb = h('div', { 'class': 'card perf perf--fb' }, [
+    var perf = h('div', { 'class': 'card perf perf--fb' }, [
       cardHead('Facebook Stats', 'f'),
-      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.profit), 'Profit', c.profit < 0 ? 'is-neg' : ''), cell(count(c.purchases), 'Sales')])], 'perf__block--top'),
-      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.spend || 0), 'Spend'), cell(money(c.revenue || 0), 'Total revenue', 'is-pos'), cell(pct(c.roi), 'ROI', c.roi != null && c.roi < 0 ? 'is-neg' : ''), cell(ratio(c.roas), 'ROAS')])]),
-      block([h('div', { 'class': 'perf__grid' }, [cell(count(c.leads), 'Leads'), cell(count(c.newLeads), 'New leads'), cell(count(c.clicks), 'Clicks'), cell(count(c.calls), 'Calls')])]),
-      block([h('div', { 'class': 'perf__grid' }, [cell(count(c.impressions), 'Impressions'), cell(count(c.reach), 'Reach'), cell(count(c.refunds), 'Refund count'), cell(money(c.refundAmount), 'Refund')])]),
-      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.cpnl), 'Cost per new lead'), cell(money(c.cpl), 'Cost per lead'), cell(money(c.costPerSale), 'Cost per sale'), cell(money(c.cpc), 'Cost per click'), cell(pct(c.ctr), 'CTR'), cell(money(c.cpm), 'CPM')])])
+      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.spend || 0), 'Amount spent'), cell(count(c.results), rlabel), cell(money(c.costPerResult), 'Cost per result'), cell(count(c.impressions), 'Impressions')])], 'perf__block--top'),
+      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.cpm), 'CPM'), cell(money(c.cplc), 'CPLC'), cell(pct(c.ctrAll), 'CTR (all)'), cell(pct(c.linkCtr), 'Link CTR')])]),
+      block([h('div', { 'class': 'perf__grid' }, [cell(ratio(c.frequency), 'Frequency'), cell(count(c.reach), 'Reach'), cell(count(c.clicksAll), 'Clicks (all)'), cell(count(c.linkClicks), 'Link clicks')])]),
+      block([h('div', { 'class': 'perf__grid' }, [cell(count(c.leads), 'Leads'), cell(money(c.cpl), 'Cost per lead'), cell(count(c.purchases), 'Purchases'), cell(money(c.costPerSale), 'Cost per purchase')])]),
+      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.revenue), 'Revenue'), cell(ratio(c.roas), 'ROAS'), cell(c.profit == null ? '–' : money(c.profit), 'Profit', c.profit != null && c.profit < 0 ? 'is-neg' : c.profit > 0 ? 'is-pos' : ''), cell(count(c.calls), 'Calls')])])
     ]);
-    var rc = h('div', { 'class': 'card perf perf--rc' }, [
-      cardHead('Facebook Revenue/Cost', 'f'),
-      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.revenue || 0, 0), 'Revenue'), cell(money(c.spend || 0, 0), 'Cost')])]),
-      sr.anyDaily ? chart(sr.rows, [{ key: 'revenue', name: 'Revenue', color: GREY, area: true, money: true }, { key: 'spend', name: 'Cost', color: RED, money: true }], { money: true, label: 'Revenue and cost per day, last 30 days' }) : h('p', { 'class': 'muted perf__nodaily', text: 'Daily numbers appear after the next refresh.' })
+    var ctr = h('div', { 'class': 'card perf perf--ctr' }, [
+      cardHead('CTR / Frequency', '%'),
+      block([h('div', { 'class': 'perf__grid' }, [cell(pct(c.linkCtr), 'Link CTR'), cell(pct(c.ctrAll), 'CTR (all)'), cell(ratio(c.frequency), 'Frequency'), cell(money(c.cpm), 'CPM')])]),
+      sr.anyDaily ? chart(sr.rows.map(function (d) { return Object.assign({}, d, { linkCtrPct: d.impressions && d.linkClicks != null ? d.linkClicks / d.impressions * 100 : 0, ctrAllPct: d.impressions && d.clicksAll != null ? d.clicksAll / d.impressions * 100 : 0 }); }), [{ key: 'ctrAllPct', name: 'CTR all %', color: GREY }, { key: 'linkCtrPct', name: 'Link CTR %', color: BLUE }], { label: 'CTR per day', pct: true }) : nodaily()
     ]);
-    var leads = h('div', { 'class': 'card perf perf--leads' }, [
-      cardHead('Total Leads', '◔'),
-      block([h('div', { 'class': 'perf__grid' }, [cell(money(c.cpl), 'Cost per lead'), cell(count(c.leads), 'Total leads')])]),
-      sr.anyDaily ? chart(sr.rows, [{ key: 'leads', name: 'Leads', color: BLUE, area: true }], { label: 'Leads per day, last 30 days' }) : h('p', { 'class': 'muted perf__nodaily', text: 'Daily numbers appear after the next refresh.' })
+    var live = tracked.filter(function (t) { return String(t.status).toUpperCase() === 'ACTIVE'; }).length;
+    var delivery = h('div', { 'class': 'card perf perf--delivery' }, [
+      cardHead('Delivery', '▶'),
+      block([h('div', { 'class': 'perf__grid' }, [cell(live + ' / ' + tracked.length, 'Campaigns active'), cell(count(tracked.reduce(function (n, t) { return n + ((t.stats && t.stats.ads) || []).length; }, 0)), 'Ads reported')])]),
+      h('div', { 'class': 'perf__list' }, tracked.map(function (t) { return h('div', { 'class': 'perf__row' }, [statusBadge(t.status), h('span', { 'class': 'perf__rowname', text: t.name }), h('span', { 'class': 'perf__rowval', text: money(inRange(t.stats && t.stats.daily, r.since, r.until).reduce(function (n, d) { return n + (d.spend || 0); }, 0), 0) })]); }))
     ]);
-    return h('div', { 'class': 'perf-grid' }, [revenue, fb, rc, totals, leads]);
+    return h('div', { 'class': 'perf-grid' }, [spend, perf, results, delivery, ctr]);
   }
 
   // ---- campaign rows ----
@@ -192,28 +227,65 @@
     return h('span', { 'class': 'badge ' + cls, text: t ? t.replace(/_/g, ' ').toLowerCase().replace(/^./, function (c) { return c.toUpperCase(); }) : 'Unknown' });
   }
   function rowMetric(value, label, cls) { return h('div', { 'class': 'crow__metric' }, [h('div', { 'class': 'crow__num ' + (cls || ''), text: value }), h('div', { 'class': 'crow__label', text: label })]); }
-  function campaignRow(t) {
+  function metricCells(m, rlabel, none) {
+    var v = function (f) { return none ? '–' : f; };
+    return [
+      rowMetric(v(money(m.spend || 0, 2)), 'Amount spent'), rowMetric(v(count(m.results)), rlabel), rowMetric(v(money(m.costPerResult)), 'Cost / result'),
+      rowMetric(v(count(m.impressions)), 'Impressions'), rowMetric(v(money(m.cpm)), 'CPM'), rowMetric(v(pct(m.ctrAll)), 'CTR (all)'),
+      rowMetric(v(pct(m.linkCtr)), 'Link CTR'), rowMetric(v(money(m.cplc)), 'CPLC'), rowMetric(v(ratio(m.frequency)), 'Frequency'), rowMetric(v(count(m.linkClicks)), 'Link clicks')
+    ];
+  }
+  function adRow(ad, r, rlabel) {
+    var daily = inRange(ad.daily, r.since, r.until);
+    var m = derive(daily.length ? sum(daily) : (ad.daily && ad.daily.length ? {} : ad.metrics || {}));
+    var thumb = ad.thumbnailUrl ? h('img', { 'class': 'adrow__thumb', src: ad.thumbnailUrl, alt: '', loading: 'lazy' }) : h('div', { 'class': 'adrow__thumb adrow__thumb--none', text: 'AD' });
+    return h('div', { 'class': 'adrow' }, [
+      h('div', { 'class': 'adrow__id' }, [thumb, h('div', { 'class': 'adrow__text' }, [ad.previewUrl ? h('a', { 'class': 'adrow__name', href: ad.previewUrl, target: '_blank', rel: 'noopener', text: ad.name }) : h('div', { 'class': 'adrow__name', text: ad.name }), h('div', { 'class': 'crow__meta' }, [statusBadge(ad.status), h('span', { text: ad.adSetName || '' })])])]),
+      h('div', { 'class': 'crow__metrics crow__metrics--ad' }, metricCells(m, rlabel, false)),
+      h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b')])
+    ]);
+  }
+  function campaignRow(t, r) {
     var st = t.stats;
-    var daily = (st && st.daily) || [];
-    var last30 = daily.filter(function (d) { return d.date >= dayKey(29); });
-    var m = st ? derive(last30.length ? sum(last30) : st.metrics || {}) : {};
+    var daily = inRange(st && st.daily, r.since, r.until);
+    var m = st ? derive(daily.length ? sum(daily) : (st.daily && st.daily.length ? {} : st.metrics || {})) : {};
     var none = !st;
+    var rlabel = (st && st.resultType) || 'Results';
+    var ads = ((st && st.ads) || []).slice().map(function (ad) { return { ad: ad, spend: inRange(ad.daily, r.since, r.until).reduce(function (n, d) { return n + (d.spend || 0); }, 0) }; })
+      .sort(function (a, b) { return b.spend - a.spend; }).map(function (x) { return x.ad; });
+    var open = false;
+    try { open = localStorage.getItem('adbuilder.adsOpen.' + t.id) === '1'; } catch (e) {}
+    var adsBox = h('div', { 'class': 'crow__ads', hidden: '' });
+    function drawAds() {
+      adsBox.innerHTML = '';
+      if (!ads.length) adsBox.appendChild(h('p', { 'class': 'muted', text: none ? 'No data yet.' : 'No ad-level rows for this campaign yet. They arrive with the next refresh.' }));
+      else {
+        adsBox.appendChild(h('div', { 'class': 'adrow adrow--head' }, [h('span', { text: ads.length + ' ad' + (ads.length === 1 ? '' : 's') + ' · ' + r.label + ' · sorted by spend' })]));
+        ads.forEach(function (ad) { adsBox.appendChild(adRow(ad, r, rlabel)); });
+      }
+      adsBox.hidden = !open;
+      toggle.textContent = (open ? 'Hide ads' : 'Ads') + (ads.length ? ' (' + ads.length + ')' : '');
+      toggle.classList.toggle('is-open', open);
+    }
+    var toggle = h('button', { 'class': 'crow__toggle', type: 'button', onclick: function () { open = !open; try { localStorage.setItem('adbuilder.adsOpen.' + t.id, open ? '1' : '0'); } catch (e) {} drawAds(); } });
     var remove = h('button', { 'class': 'crow__remove', title: 'Stop tracking this campaign', type: 'button', onclick: function () {
       request('DELETE', '/api/tracked/' + t.id).then(function (o) { apply(o); }, function (err) { setNotice('error', err.message); });
     } }, ['×']);
-    return h('div', { 'class': 'card crow' }, [
-      h('div', { 'class': 'crow__id' }, [
-        h('div', { 'class': 'crow__name', text: t.name }),
-        h('div', { 'class': 'crow__meta' }, [statusBadge(t.status), h('span', { text: (t.adAccountName || t.adAccountId || '') }), h('span', { 'class': 'crow__cid', text: 'ID ' + t.id })])
+    var card = h('div', { 'class': 'card crow' }, [
+      h('div', { 'class': 'crow__main' }, [
+        h('div', { 'class': 'crow__id' }, [
+          h('div', { 'class': 'crow__name', text: t.name }),
+          h('div', { 'class': 'crow__meta' }, [statusBadge(t.status), h('span', { text: (t.adAccountName || t.adAccountId || '') }), h('span', { 'class': 'crow__cid', text: 'ID ' + t.id })]),
+          h('div', { 'class': 'crow__actions' }, [toggle])
+        ]),
+        h('div', { 'class': 'crow__metrics' }, metricCells(m, rlabel, none)),
+        h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b'), h('div', { 'class': 'crow__label', text: st ? 'Spend · synced ' + ago(st.syncedAt) : 'No data yet' })]),
+        remove
       ]),
-      h('div', { 'class': 'crow__metrics' }, [
-        rowMetric(none ? '–' : money(m.spend || 0, 0), 'Spend'), rowMetric(none ? '–' : money(m.revenue || 0, 0), 'Revenue', (m.revenue || 0) > 0 ? 'is-pos' : ''), rowMetric(none ? '–' : money(m.profit, 0), 'Profit', m.profit < 0 ? 'is-neg' : ''), rowMetric(money(m.costPerSale, 0), 'Cost / sale'),
-        rowMetric(ratio(m.roas), 'ROAS'), rowMetric(count(m.purchases), 'Sales'), rowMetric(count(m.leads), 'Leads'), rowMetric(money(m.cpl), 'CPL'),
-        rowMetric(count(m.clicks), 'Clicks'), rowMetric(pct(m.ctr), 'CTR'), rowMetric(money(m.cpc), 'CPC')
-      ]),
-      h('div', { 'class': 'crow__spark' }, [spark(last30, 'spend', '#e5534b'), h('div', { 'class': 'crow__label', text: st ? 'Spend, 30 d · synced ' + ago(st.syncedAt) : 'No data yet' })]),
-      remove
+      adsBox
     ]);
+    drawAds();
+    return card;
   }
 
   // ---- picker: 1) ad accounts -> 2) Hermes pulls their campaigns -> 3) tick what shows on the dashboard ----
@@ -378,7 +450,19 @@
   var refreshBtn = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: doRefresh }, ['Refresh']);
   var chooseBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openPicker(); } }, ['Choose campaigns']);
   var subtitle = h('div', { 'class': 'muted' });
-  root.appendChild(h('div', { 'class': 'perf-toolbar' }, [h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]), h('div', { 'class': 'btn-row' }, [chooseBtn, refreshBtn])]));
+  var frameSel = h('select', { 'class': 'table__input frame__select', title: 'Timeframe' }, PRESETS.map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
+  var sinceIn = h('input', { 'class': 'table__input frame__date', type: 'date' });
+  var untilIn = h('input', { 'class': 'table__input frame__date', type: 'date' });
+  var customBox = h('div', { 'class': 'frame__custom', hidden: '' }, [sinceIn, h('span', { 'class': 'muted', text: 'to' }), untilIn]);
+  function saveFrame() { try { localStorage.setItem('adbuilder.timeframe', JSON.stringify(frame)); } catch (e) {} }
+  frameSel.value = frame.preset; sinceIn.value = frame.since || ''; untilIn.value = frame.until || '';
+  customBox.hidden = frame.preset !== 'custom';
+  frameSel.addEventListener('change', function () { frame.preset = frameSel.value; customBox.hidden = frame.preset !== 'custom'; if (frame.preset === 'custom' && !frame.since) { frame.since = dayKey(6); frame.until = dayKey(0); sinceIn.value = frame.since; untilIn.value = frame.until; } saveFrame(); if (data) render(); });
+  [sinceIn, untilIn].forEach(function (inp) { inp.addEventListener('change', function () { frame.since = sinceIn.value; frame.until = untilIn.value; saveFrame(); if (data) render(); }); });
+  root.appendChild(h('div', { 'class': 'perf-toolbar' }, [
+    h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]),
+    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), chooseBtn, refreshBtn])
+  ]));
   root.appendChild(notice);
   root.appendChild(body);
 
@@ -399,10 +483,11 @@
       ]));
       return;
     }
-    var sr = series(d.tracked);
-    body.appendChild(summaryCards(sr));
-    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: 'Last 30 days · ' + (d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
-    d.tracked.forEach(function (t) { body.appendChild(campaignRow(t)); });
+    var r = rangeOf(frame);
+    var sr = series(d.tracked, r);
+    body.appendChild(summaryCards(sr, r, d.tracked));
+    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: r.label + ' · ' + (d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
+    d.tracked.forEach(function (t) { body.appendChild(campaignRow(t, r)); });
   }
   function load() { return request('GET', '/api/tracked').then(apply, function (err) { setNotice('error', 'Could not load: ' + err.message); }); }
   var pollTimer = null;

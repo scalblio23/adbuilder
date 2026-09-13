@@ -130,9 +130,16 @@ them back with the access token:
 
 ```
 PUT /api/v1/campaign-stats
-{ "items": [ { "campaignId": "1202…", "name": "…", "status": "ACTIVE", "currency": "AUD",
-               "daily": [ { "date": "2026-09-13", "spend": 0, "impressions": 0, "reach": 0, "clicks": 0, "leads": 0, "purchases": 0, "revenue": 0 } ] } ] }
+{ "items": [ { "campaignId": "1202…", "name": "…", "status": "ACTIVE", "objective": "OUTCOME_LEADS", "resultType": "Leads", "currency": "AUD",
+               "daily": [ { "date": "2026-09-13", "spend": 0, "impressions": 0, "reach": 0, "clicksAll": 0, "linkClicks": 0, "results": 0, "leads": 0, "purchases": 0, "revenue": 0 } ],
+               "ads": [ { "id": "…", "name": "…", "adSetName": "…", "status": "ACTIVE", "thumbnailUrl": "https://…",
+                          "daily": [ { "date": "2026-09-13", "spend": 0, "impressions": 0, "reach": 0, "clicksAll": 0, "linkClicks": 0, "results": 0 } ] } ] } ] }
 ```
+
+The page computes CPM, cost per link click, CTR (all), link CTR, frequency (impressions ÷ reach),
+results and cost per result for the chosen timeframe (today, yesterday, last 7/14/30 days, this or
+last month, maximum, or a custom range) from those daily rows, and shows the ad-by-ad breakdown
+under each campaign. Frequency over a range is approximate because daily reach is summed.
 
 `GET /api/v1/campaign-stats` returns the tracked list, so Hermes can also pull on its own schedule.
 Campaigns that are not tracked are ignored. The page polls for the new numbers after a refresh.
