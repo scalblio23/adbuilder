@@ -214,7 +214,7 @@ field names (`account_id`, `ad_accounts`, `datasets`) are accepted too.
 ## Files
 
 - `public/` – the dashboard (HTML, CSS, sidebar, Ad Accounts table, Ad Builder, Settings)
-- `api/[...path].js` – the single Vercel function; `lib/router.js` holds the route table it and `server.js` share
+- `api/index.js` – the single Vercel function (`vercel.json` rewrites every `/api/*` path to it); `lib/router.js` holds the route table it and `server.js` share
 - `lib/db.js` – database connection (Neon HTTPS driver on Vercel, node-postgres elsewhere)
 - `lib/store.js` – ad accounts storage: Postgres when `DATABASE_URL` is set, otherwise a JSON file
 - `lib/docs.js` – document storage for campaigns, creatives, and settings
