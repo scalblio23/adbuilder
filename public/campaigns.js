@@ -90,7 +90,9 @@
   function series(tracked, r) {
     var byDate = {}, anyDaily = false, prevRows = [];
     tracked.forEach(function (t) {
-      ((t.stats && t.stats.daily) || []).forEach(function (d) {
+      var rows0 = withResults(t.stats && t.stats.daily, t.resultOverride);
+      if (!countable(t)) rows0 = rows0.map(function (d) { return Object.assign({}, d, { results: 0 }); });
+      rows0.forEach(function (d) {
         anyDaily = true;
         if (d.date >= r.since && d.date <= r.until) { (byDate[d.date] = byDate[d.date] || []).push(d); }
         else if (d.date >= r.prevSince && d.date <= r.prevUntil) prevRows.push(d);
@@ -102,10 +104,24 @@
     return { rows: rows, current: derive(current), previous: hasPrev ? derive(sum(prevRows)) : null, anyDaily: anyDaily, days: r.dates.length };
   }
   function delta(cur, prev, key) { if (!prev || !prev[key]) return null; return (cur[key] - prev[key]) / Math.abs(prev[key]); }
+  var LABELS = { lead: 'Leads', schedule: 'Schedules', purchase: 'Purchases', contact: 'Contacts', complete_registration: 'Registrations', submit_application: 'Applications', start_trial: 'Trials', subscribe: 'Subscriptions', add_to_cart: 'Adds to cart', initiate_checkout: 'Checkouts', add_payment_info: 'Payment info', search: 'Searches', view_content: 'Content views', find_location: 'Location finds', customize_product: 'Customisations', donate: 'Donations', link_click: 'Link clicks', landing_page_view: 'Landing page views', messaging: 'Conversations', thruplay: 'ThruPlays', app_install: 'App installs', post_engagement: 'Engagements', reach: 'Reach', impressions: 'Impressions' };
+  function labelFor(key) { return LABELS[key] || (key ? key.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Results'); }
+  // The result key a campaign uses: its manual override, else what its ad sets optimise for.
+  function resultKeyOf(t) { return t.resultOverride || (t.stats && t.stats.resultKey) || ''; }
+  function campaignResultLabel(t) { var k = resultKeyOf(t); return k ? labelFor(k) : (t.stats && t.stats.resultType) || 'Results'; }
+  // Daily rows with "results" recomputed for the chosen key (from the conversions each row carries).
+  function withResults(rows, key) {
+    if (!key) return rows || [];
+    return (rows || []).map(function (d) {
+      var v = key === 'reach' ? d.reach : key === 'impressions' ? d.impressions : (d.conv && d.conv[key]) || 0;
+      return Object.assign({}, d, { results: v || 0 });
+    });
+  }
+  function countable(t) { var k = resultKeyOf(t); return k !== 'reach' && k !== 'impressions'; }
   function resultLabel(list) {
-    var types = {}; list.forEach(function (t) { var rt = t.stats && t.stats.resultType; if (rt) types[rt] = (types[rt] || 0) + 1; });
+    var types = {}; list.filter(countable).forEach(function (t) { var rt = campaignResultLabel(t); if (rt) types[rt] = (types[rt] || 0) + 1; });
     var keys = Object.keys(types).sort(function (a, b) { return types[b] - types[a]; });
-    return keys.length === 1 ? keys[0] : keys.length ? 'Results (mixed)' : 'Results';
+    return keys.length === 0 ? 'Results' : keys.length <= 3 ? keys.join(' + ') : 'Results (mixed)';
   }
 
   // ---- charts (inline SVG, hover crosshair + tooltip) ----
@@ -204,6 +220,32 @@
       rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null
     ]);
   }
+  var GREYS = ['#4a4f4d', '#6a706d', '#8a918d', '#a9b0ac', '#c4cac6', '#3a3e3c', '#5a5f5c'];
+  function hero(sr, r, tracked) {
+    var c = sr.current, p = sr.previous;
+    var rlabel = resultLabel(tracked);
+    var per = tracked.map(function (t) {
+      var daily = inRange(withResults(t.stats && t.stats.daily, t.resultOverride), r.since, r.until);
+      var m = derive(sum(daily));
+      return { t: t, spend: m.spend || 0, results: countable(t) ? m.results || 0 : 0, cpr: countable(t) ? m.costPerResult : null, label: campaignResultLabel(t) };
+    }).sort(function (a, b) { return b.spend - a.spend; });
+    var total = per.reduce(function (n, x) { return n + x.spend; }, 0);
+    var best = per.filter(function (x) { return x.cpr != null; }).sort(function (a, b) { return a.cpr - b.cpr; })[0];
+    var segs = per.map(function (x, i) { return h('div', { 'class': 'split__seg' + (best && x.t.id === best.t.id ? ' is-best' : ''), style: 'flex:' + Math.max(x.spend, total * 0.02 || 1) + ';background:' + (best && x.t.id === best.t.id ? '' : GREYS[i % GREYS.length]), title: x.t.name + ' · ' + money(x.spend) }); });
+    var legend = per.map(function (x, i) {
+      var isBest = best && x.t.id === best.t.id;
+      return h('div', { 'class': 'split__row' + (isBest ? ' is-best' : '') }, [h('span', { 'class': 'split__dot', style: isBest ? '' : 'background:' + GREYS[i % GREYS.length] }), h('span', { 'class': 'split__name', text: x.t.name }), h('span', { 'class': 'split__val', text: money(x.spend, 0) + (x.results ? ' · ' + count(x.results) + ' ' + x.label.toLowerCase() + ' · ' + money(x.cpr) + ' each' : '') })]);
+    });
+    return h('div', { 'class': 'hero' }, [
+      h('div', { 'class': 'hero__nums' }, [
+        h('div', { 'class': 'hero__num' }, [h('div', { 'class': 'mono', text: 'Amount spent' }), h('div', { 'class': 'hero__big', text: money(c.spend || 0, 0) }), h('div', { 'class': 'hero__sub', text: 'across ' + tracked.length + ' campaign' + (tracked.length === 1 ? '' : 's') + (p ? ' · ' + (delta(c, p, 'spend') >= 0 ? '▲' : '▼') + ' ' + pct(Math.abs(delta(c, p, 'spend') || 0)) + ' vs previous' : '') })]),
+        h('div', { 'class': 'hero__but mono', text: 'for' }),
+        h('div', { 'class': 'hero__num' }, [h('div', { 'class': 'mono', text: rlabel }), h('div', { 'class': 'hero__big is-green', text: count(c.results) }), h('div', { 'class': 'hero__sub', text: 'cost per result ' + money(c.costPerResult) + (p && delta(c, p, 'results') != null ? ' · ' + (delta(c, p, 'results') >= 0 ? '▲' : '▼') + ' ' + pct(Math.abs(delta(c, p, 'results'))) + ' vs previous' : '') })])
+      ]),
+      h('div', { 'class': 'split' }, segs),
+      h('div', { 'class': 'split__legend' }, legend.concat(best ? [h('div', { 'class': 'split__row is-best split__row--note' }, [h('span', { 'class': 'split__dot' }), h('span', { 'class': 'split__name', text: 'Best cost per result' }), h('span', { 'class': 'split__val', text: best.t.name + ' · ' + money(best.cpr) })])] : []))
+    ]);
+  }
   function summaryCards(sr, r, tracked) {
     var c = sr.current, p = sr.previous, rows = sr.anyDaily ? sr.rows : null;
     var rlabel = resultLabel(tracked);
@@ -237,8 +279,8 @@
       rowMetric(v(pct(m.linkCtr)), 'Link CTR'), rowMetric(v(money(m.cplc)), 'CPLC'), rowMetric(v(ratio(m.frequency)), 'Frequency'), rowMetric(v(count(m.linkClicks)), 'Link clicks')
     ];
   }
-  function adRow(ad, r, rlabel) {
-    var daily = inRange(ad.daily, r.since, r.until);
+  function adRow(ad, r, rlabel, key) {
+    var daily = inRange(withResults(ad.daily, key), r.since, r.until);
     var m = derive(daily.length ? sum(daily) : (ad.daily && ad.daily.length ? {} : ad.metrics || {}));
     var thumb = ad.thumbnailUrl ? h('img', { 'class': 'adrow__thumb', src: ad.thumbnailUrl, alt: '', loading: 'lazy' }) : h('div', { 'class': 'adrow__thumb adrow__thumb--none', text: 'AD' });
     return h('div', { 'class': 'adrow' }, [
@@ -251,10 +293,20 @@
   function setOn(id, on) { try { localStorage.setItem('adbuilder.campaignOn.' + id, on ? '1' : '0'); } catch (e) {} }
   function campaignRow(t, r) {
     var st = t.stats;
-    var daily = inRange(st && st.daily, r.since, r.until);
+    var daily = inRange(withResults(st && st.daily, t.resultOverride), r.since, r.until);
     var m = st ? derive(daily.length ? sum(daily) : (st.daily && st.daily.length ? {} : st.metrics || {})) : {};
     var none = !st;
-    var rlabel = (st && st.resultType) || 'Results';
+    var rlabel = campaignResultLabel(t);
+    // Result type: auto (what the ad sets optimise for) or a manual choice from the conversions seen.
+    var seen = {}; ((st && st.daily) || []).forEach(function (d) { Object.keys(d.conv || {}).forEach(function (k) { seen[k] = true; }); });
+    ['lead', 'schedule', 'purchase', 'contact', 'complete_registration', 'link_click', 'landing_page_view', 'messaging', 'reach'].forEach(function (k) { seen[k] = true; });
+    var opt = (st && st.optimisation && st.optimisation[0]) || null;
+    var autoText = 'Auto: ' + ((st && st.resultType) || 'Results') + (opt ? ' (' + (opt.event ? opt.event.toLowerCase().replace(/_/g, ' ') + ' event' : opt.goal.toLowerCase().replace(/_/g, ' ')) + ')' : '');
+    var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(Object.keys(seen).sort().map(function (k) { return h('option', { value: k, text: labelFor(k) }); })));
+    resultSel.value = t.resultOverride || '';
+    resultSel.addEventListener('change', function () {
+      request('PUT', '/api/tracked/' + t.id, { resultOverride: resultSel.value }).then(function (o) { apply(o); }, function (err) { setNotice('error', err.message); });
+    });
     var ads = ((st && st.ads) || []).slice().map(function (ad) { return { ad: ad, spend: inRange(ad.daily, r.since, r.until).reduce(function (n, d) { return n + (d.spend || 0); }, 0) }; })
       .sort(function (a, b) { return b.spend - a.spend; }).map(function (x) { return x.ad; });
     var open = false;
@@ -265,7 +317,7 @@
       if (!ads.length) adsBox.appendChild(h('p', { 'class': 'muted', text: none ? 'No data yet.' : 'No ad-level rows for this campaign yet. They arrive with the next refresh.' }));
       else {
         adsBox.appendChild(h('div', { 'class': 'adrow adrow--head' }, [h('span', { text: ads.length + ' ad' + (ads.length === 1 ? '' : 's') + ' · ' + r.label + ' · sorted by spend' })]));
-        ads.forEach(function (ad) { adsBox.appendChild(adRow(ad, r, rlabel)); });
+        ads.forEach(function (ad) { adsBox.appendChild(adRow(ad, r, rlabel, t.resultOverride)); });
       }
       adsBox.hidden = !open;
       toggle.textContent = (open ? 'Hide ads' : 'Ads') + (ads.length ? ' (' + ads.length + ')' : '');
@@ -284,7 +336,8 @@
         h('div', { 'class': 'crow__id' }, [
           h('div', { 'class': 'crow__name', text: t.name }),
           h('div', { 'class': 'crow__meta' }, [statusBadge(t.status), h('span', { text: (t.adAccountName || t.adAccountId || '') }), h('span', { 'class': 'crow__cid', text: 'ID ' + t.id })]),
-          h('div', { 'class': 'crow__actions' }, [toggle, h('span', { 'class': 'crow__label', text: st ? 'Synced ' + ago(st.syncedAt) : 'No data yet' })])
+          h('div', { 'class': 'crow__actions' }, [toggle, resultSel]),
+          h('div', { 'class': 'crow__label', text: st ? 'Synced ' + ago(st.syncedAt) : 'No data yet' })
         ]),
         h('div', { 'class': 'crow__metrics' }, metricCells(m, rlabel, none)),
         h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b'), h('div', { 'class': 'crow__label', text: 'Spend' })]),
@@ -529,7 +582,8 @@
     var r = rangeOf(frame);
     var on = d.tracked.filter(function (t) { return isOn(t.id); });
     var sr = series(on, r);
-    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: r.label }), h('span', { 'class': 'muted', text: on.length + ' of ' + d.tracked.length + ' campaign' + (d.tracked.length === 1 ? '' : 's') + ' switched on · change vs the previous ' + sr.days + ' day' + (sr.days === 1 ? '' : 's') })]));
+    body.appendChild(h('div', { 'class': 'con__head mono' }, [h('span', { text: 'Campaigns · ' + pad(on.length) + ' / ' + pad(d.tracked.length) + ' on' }), h('span', { text: r.label + ' · ' + (d.source === 'meta' ? 'direct from Meta' : 'via Hermes') + ' · vs previous ' + sr.days + ' day' + (sr.days === 1 ? '' : 's') })]));
+    body.appendChild(hero(sr, r, on));
     body.appendChild(summaryCards(sr, r, on));
     body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: 'Switch a campaign off to leave it out of the numbers above · ' + (d.source === 'meta' ? 'pulled straight from Meta' : d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
     d.tracked.forEach(function (t) { body.appendChild(campaignRow(t, r)); });

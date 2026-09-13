@@ -114,8 +114,12 @@ primary text already typed) are listed in `AI_RULES.md` and inside the AI settin
 then lists ad accounts and campaigns and pulls daily insights itself from the Marketing API,
 campaign level and ad level, on Refresh and on the twice-daily cron. A System User token from Meta
 Business Settings does not expire. The token is checked against `/me` before it is saved and is
-never sent to the browser. Results follow the campaign objective (leads, purchases, link clicks,
-reach, …). With no token the page falls back to asking Hermes, as described below.
+never sent to the browser. Results follow what the ad sets are optimised for: the optimisation
+goal and, for website conversions, the promoted event (Schedule, Lead, Purchase, Contact, …). Each
+daily row also keeps the standard conversions it saw, so a campaign's result type can be changed on
+its card (for example to Schedules) without pulling again; reach-optimised campaigns are shown but
+left out of the combined result total. With no token the page falls back to asking Hermes, as
+described below.
 
 
 The Campaigns tab shows hand-picked Meta campaigns: metric cards at the top (revenue, profit,
