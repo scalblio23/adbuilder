@@ -823,3 +823,15 @@ a.adrow__name:hover { color: var(--accent); }
 .bc__num { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 1100px) { .bestc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .bestc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* picker modes */
+.ptabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.ptabs__tab { background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 999px; padding: 5px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.ptabs__tab:hover { color: var(--text); }
+.ptabs__tab.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.perf-page .ptabs__tab.is-on { background: var(--con-green); border-color: var(--con-green); color: #061a12; font-weight: 700; }
+/* tile scrubbing */
+.tile { cursor: crosshair; touch-action: pan-y; }
+.tile__marker { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.35); pointer-events: none; z-index: 2; }
+.tile.is-scrub .tile__value { color: var(--con-green, #3ec27a); }
+.tile.is-scrub .perf__delta { color: var(--text-muted); }

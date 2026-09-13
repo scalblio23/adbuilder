@@ -192,6 +192,18 @@
     return { rows: rows, current: derive(current), previous: hasPrev ? derive(sum(prevRows)) : null, anyDaily: anyDaily, days: r.dates.length };
   }
   function delta(cur, prev, key) { if (!prev || !prev[key]) return null; return (cur[key] - prev[key]) / Math.abs(prev[key]); }
+  // What the change arrows compare against, in words: "last week", "the day before", "the previous 30 days".
+  function compareLabel(r) {
+    var n = r.dates.length;
+    if (frame.preset === 'today') return 'yesterday';
+    if (frame.preset === 'yesterday') return 'the day before';
+    if (frame.preset === 'month' || frame.preset === 'lastmonth') return 'the month before';
+    if (n === 7) return 'last week';
+    if (n === 14) return 'the previous 2 weeks';
+    if (n === 30) return 'the previous 30 days';
+    return 'the previous ' + n + ' day' + (n === 1 ? '' : 's');
+  }
+  function changeText(v, r) { return (v >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(v)) + ' ' + (v >= 0 ? 'more' : 'less') + ' than ' + compareLabel(r); }
   var LABELS = { lead: 'Leads', schedule: 'Website schedules', purchase: 'Purchases', contact: 'Contacts', complete_registration: 'Registrations', submit_application: 'Applications', start_trial: 'Trials', subscribe: 'Subscriptions', add_to_cart: 'Adds to cart', initiate_checkout: 'Checkouts', add_payment_info: 'Payment info', search: 'Searches', view_content: 'Content views', find_location: 'Location finds', customize_product: 'Customisations', donate: 'Donations', link_click: 'Link clicks', landing_page_view: 'Landing page views', messaging: 'Conversations', thruplay: 'ThruPlays', app_install: 'App installs', post_engagement: 'Engagements', reach: 'Reach', impressions: 'Impressions' };
   function labelFor(key, extra) { return (extra && extra[key]) || LABELS[key] || (key ? key.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Results'); }
   // The result key a campaign uses: its manual override, else what its ad sets optimise for.
@@ -285,10 +297,11 @@
   function big(value, label, cls) { return h('div', { 'class': 'perf__big' }, [h('div', { 'class': 'perf__value ' + (cls || ''), text: value }), label ? h('div', { 'class': 'perf__label', text: label }) : null]); }
   function cell(value, label, cls) { return h('div', { 'class': 'perf__cell' }, [h('div', { 'class': 'perf__num ' + (cls || ''), text: value }), h('div', { 'class': 'perf__label', text: label })]); }
   function block(children, cls) { return h('div', { 'class': 'perf__block ' + (cls || '') }, children); }
+  var currentRange = null;
   function deltaTag(v, lowerIsBetter) {
     if (v == null) return null;
     var good = lowerIsBetter ? v <= 0 : v >= 0;
-    return h('span', { 'class': 'perf__delta ' + (good ? 'is-up' : 'is-down'), title: 'vs the previous period', text: (v >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(v)) });
+    return h('span', { 'class': 'perf__delta ' + (good ? 'is-up' : 'is-down'), title: 'Compared with ' + (currentRange ? compareLabel(currentRange) : 'the previous period'), text: currentRange ? changeText(v, currentRange) : (v >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(v)) });
   }
   // Ten uniform square tiles, five per row: one Meta metric each, with its change vs the previous period and a sparkline.
   function tileSpark(rows, valueOf, color) {
@@ -304,12 +317,34 @@
   }
   function tile(def, c, p, rows) {
     var d = delta(c, p, def.key);
-    return h('div', { 'class': 'card tile' }, [
-      h('div', { 'class': 'tile__label', text: def.label }),
-      h('div', { 'class': 'tile__value', text: def.fmt(c[def.key]) }),
-      deltaTag(d, def.lowerIsBetter) || h('span', { 'class': 'perf__delta tile__delta--none', text: ' ' }),
-      rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null
-    ]);
+    var valueEl = h('div', { 'class': 'tile__value', text: def.fmt(c[def.key]) });
+    var labelEl = h('div', { 'class': 'tile__label', text: def.label });
+    var deltaEl = deltaTag(d, def.lowerIsBetter) || h('span', { 'class': 'perf__delta tile__delta--none', text: ' ' });
+    var marker = h('div', { 'class': 'tile__marker', hidden: '' });
+    var el = h('div', { 'class': 'card tile' }, [labelEl, valueEl, deltaEl, rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null, marker]);
+    if (rows && rows.length) {
+      // Move or drag across the tile to read that day's value; leave to return to the period total.
+      var n = rows.length;
+      function at(evt) {
+        var box = el.getBoundingClientRect();
+        var x = (evt.touches ? evt.touches[0].clientX : evt.clientX) - box.left;
+        var i = n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round(x / box.width * (n - 1))));
+        var row = rows[i], v = derive(row)[def.key];
+        valueEl.textContent = def.fmt(v);
+        labelEl.textContent = def.label + ' · ' + dateLabel(row.date);
+        deltaEl.textContent = 'that day · release to return';
+        marker.hidden = false; marker.style.left = (n === 1 ? 50 : i / (n - 1) * 100) + '%';
+        el.classList.add('is-scrub');
+      }
+      function reset() {
+        valueEl.textContent = def.fmt(c[def.key]); labelEl.textContent = def.label;
+        var fresh = deltaTag(d, def.lowerIsBetter); deltaEl.textContent = fresh ? fresh.textContent : ' ';
+        marker.hidden = true; el.classList.remove('is-scrub');
+      }
+      el.addEventListener('mousemove', at); el.addEventListener('mouseleave', reset);
+      el.addEventListener('touchstart', at, { passive: true }); el.addEventListener('touchmove', at, { passive: true }); el.addEventListener('touchend', reset);
+    }
+    return el;
   }
   var GREYS = ['#4a4f4d', '#6a706d', '#8a918d', '#a9b0ac', '#c4cac6', '#3a3e3c', '#5a5f5c'];
   function hero(sr, r, tracked) {
@@ -329,9 +364,9 @@
     });
     return h('div', { 'class': 'hero' }, [
       h('div', { 'class': 'hero__nums' }, [
-        h('div', { 'class': 'hero__num' }, [h('div', { 'class': 'mono', text: 'Amount spent' }), h('div', { 'class': 'hero__big', text: money(c.spend || 0, 0) }), h('div', { 'class': 'hero__sub', text: 'across ' + tracked.length + ' campaign' + (tracked.length === 1 ? '' : 's') + (p ? ' · ' + (delta(c, p, 'spend') >= 0 ? '▲' : '▼') + ' ' + pct(Math.abs(delta(c, p, 'spend') || 0)) + ' vs previous' : '') })]),
+        h('div', { 'class': 'hero__num' }, [h('div', { 'class': 'mono', text: 'Amount spent' }), h('div', { 'class': 'hero__big', text: money(c.spend || 0, 0) }), h('div', { 'class': 'hero__sub', text: 'across ' + tracked.length + ' campaign' + (tracked.length === 1 ? '' : 's') + (p && delta(c, p, 'spend') != null ? ' · ' + changeText(delta(c, p, 'spend'), r) : '') })]),
         h('div', { 'class': 'hero__but mono', text: 'for' }),
-        h('div', { 'class': 'hero__num' }, [h('div', { 'class': 'mono', text: rlabel }), h('div', { 'class': 'hero__big is-green', text: count(c.results) }), h('div', { 'class': 'hero__sub', text: 'cost per result ' + money(c.costPerResult) + (p && delta(c, p, 'results') != null ? ' · ' + (delta(c, p, 'results') >= 0 ? '▲' : '▼') + ' ' + pct(Math.abs(delta(c, p, 'results'))) + ' vs previous' : '') })])
+        h('div', { 'class': 'hero__num' }, [h('div', { 'class': 'mono', text: rlabel }), h('div', { 'class': 'hero__big is-green', text: count(c.results) }), h('div', { 'class': 'hero__sub', text: 'cost per result ' + money(c.costPerResult) + (p && delta(c, p, 'results') != null ? ' · ' + changeText(delta(c, p, 'results'), r) : '') })])
       ]),
       h('div', { 'class': 'split' }, segs),
       h('div', { 'class': 'split__legend' }, legend.concat(best ? [h('div', { 'class': 'split__row is-best split__row--note' }, [h('span', { 'class': 'split__dot' }), h('span', { 'class': 'split__name', text: 'Best cost per result' }), h('span', { 'class': 'split__val', text: best.t.name + ' · ' + money(best.cpr) })])] : []))
@@ -385,6 +420,7 @@
       h('div', { 'class': 'bc__name', title: ad.name, text: ad.name }),
       h('div', { 'class': 'bc__meta', text: item.campaign.name + (ad.adSetName ? ' · ' + ad.adSetName : '') }),
       h('div', { 'class': 'bc__stats' }, [
+        stat(money(m.spend), 'Amount spent'),
         stat(money(m.cpm), 'CPM'),
         stat(count(m.results), item.rlabel),
         stat(money(m.cplc), 'CPLC'),
@@ -537,9 +573,12 @@
       }, everyMs);
     })();
   }
-  function openPicker() {
+  function openPicker(startMode) {
+    var mode = startMode || (data.tracked.length ? 'add' : 'add');
     var chosenAccounts = {}; data.tracked.forEach(function (t) { if (t.adAccountId) chosenAccounts[t.adAccountId] = true; });
-    var chosen = {}; data.tracked.forEach(function (t) { chosen[t.id] = t; });
+    var chosen = {};                 // add mode: new campaigns to append
+    var keep = {}; data.tracked.forEach(function (t) { keep[t.id] = true; });   // edit mode: which existing ones stay
+    var tracked = {}; data.tracked.forEach(function (t) { tracked[t.id] = t; });
     var step = 1, requestedAt = 0, waiting = false;
     var panel = h('div', { 'class': 'picker__panel picker__panel--wide' });
     var overlay = h('div', { 'class': 'picker' }, [panel]);
@@ -547,13 +586,47 @@
     var status = h('div', { 'class': 'notice', hidden: '' }, [h('span', { 'class': 'notice__dot' }), h('span')]);
     function say(kind, text) { status.hidden = !text; status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = text || ''; }
     function head() {
+      var tabs = h('div', { 'class': 'ptabs' }, [['add', 'Add new campaigns'], ['edit', 'Edit existing campaigns']].map(function (t) {
+        return h('button', { 'class': 'ptabs__tab' + (mode === t[0] ? ' is-on' : ''), type: 'button', onclick: function () { mode = t[0]; step = 1; say('', ''); draw(); } }, [t[1] + (t[0] === 'edit' ? ' (' + data.tracked.length + ')' : '')]);
+      }));
       return h('div', { 'class': 'picker__head' }, [
-        h('div', {}, [h('h2', { 'class': 'card__title', text: 'Choose campaigns', style: 'margin:0' }),
-          h('div', { 'class': 'steps' }, [1, 2, 3].map(function (n) { return h('span', { 'class': 'steps__item' + (n === step ? ' is-on' : n < step ? ' is-done' : ''), text: n + ' ' + ['Ad accounts', 'Campaigns', 'Dashboard'][n - 1] }); }))]),
+        h('div', {}, [tabs,
+          mode === 'add' ? h('div', { 'class': 'steps' }, [1, 2].map(function (n) { return h('span', { 'class': 'steps__item' + (n === step ? ' is-on' : n < step ? ' is-done' : ''), text: n + ' ' + ['Ad accounts', 'Pick campaigns'][n - 1] }); })) : null]),
         h('button', { 'class': 'btn', type: 'button', onclick: function () { overlay.remove(); } }, ['Close'])
       ]);
     }
-    function draw() { panel.innerHTML = ''; panel.appendChild(head()); panel.appendChild(status); (step === 1 ? drawAccounts : drawCampaigns)(); }
+    function draw() { panel.innerHTML = ''; panel.appendChild(head()); panel.appendChild(status); (mode === 'edit' ? drawEdit : step === 1 ? drawAccounts : drawCampaigns)(); }
+
+    // Edit mode: the campaigns already on the dashboard; untick to remove, change the result type inline.
+    function drawEdit() {
+      panel.appendChild(h('p', { 'class': 'muted', text: 'These campaigns are on the dashboard. Untick one to remove it (its stored numbers are dropped). Use "Add new campaigns" to bring more in.' }));
+      var list = h('div', { 'class': 'picker__list' });
+      var countEl = h('span', { 'class': 'muted' });
+      function drawList() {
+        list.innerHTML = '';
+        if (!data.tracked.length) list.appendChild(h('p', { 'class': 'muted', text: 'Nothing on the dashboard yet.' }));
+        data.tracked.forEach(function (t) {
+          var box = h('input', { type: 'checkbox', checked: !!keep[t.id] });
+          var item = h('label', { 'class': 'picker__item' + (keep[t.id] ? ' is-added' : '') }, [box,
+            h('div', { 'class': 'picker__text' }, [h('strong', { text: t.name }), h('span', { text: (t.adAccountName || t.adAccountId || '') + ' · ID ' + t.id + (t.status ? ' · ' + t.status : '') + (t.stats ? ' · result: ' + campaignResultLabel(t) : ' · no numbers yet') })]),
+            h('span', { 'class': 'picker__show', text: keep[t.id] ? 'Keep' : 'Remove' })]);
+          box.addEventListener('change', function () { keep[t.id] = box.checked; item.classList.toggle('is-added', box.checked); item.lastChild.textContent = box.checked ? 'Keep' : 'Remove'; countEl.textContent = Object.keys(keep).filter(function (k) { return keep[k]; }).length + ' will stay'; });
+          list.appendChild(item);
+        });
+        countEl.textContent = Object.keys(keep).filter(function (k) { return keep[k]; }).length + ' will stay';
+      }
+      var save = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: function () {
+        var remaining = data.tracked.filter(function (t) { return keep[t.id]; });
+        var removed = data.tracked.length - remaining.length;
+        if (removed && !confirm('Remove ' + removed + ' campaign' + (removed === 1 ? '' : 's') + ' from the dashboard?')) return;
+        save.disabled = true;
+        request('PUT', '/api/tracked', { campaigns: remaining })
+          .then(function (o) { overlay.remove(); apply(o); setNotice('ok', o.tracked.length + ' campaign' + (o.tracked.length === 1 ? '' : 's') + ' on the dashboard.'); }, function (err) { save.disabled = false; say('error', err.message); });
+      } }, ['Save changes']);
+      panel.appendChild(list);
+      panel.appendChild(h('div', { 'class': 'picker__foot' }, [countEl, save]));
+      drawList();
+    }
 
     // Step 1: which ad accounts
     function drawAccounts() {
@@ -620,9 +693,10 @@
     // Step 2: campaigns of the chosen accounts, tick to show on the dashboard
     function drawCampaigns() {
       var selectedAccounts = Object.keys(chosenAccounts).filter(function (k) { return chosenAccounts[k]; });
-      var catalog = (data.catalog.items || []).filter(function (c) { return !selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1; });
+      var catalog = (data.catalog.items || []).filter(function (c) { return !tracked[c.id] && (!selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1); });
       var names = {}; (data.accounts || []).forEach(function (a) { names[a.id] = a.name; });
-      panel.appendChild(h('p', { 'class': 'muted', text: 'Tick the campaigns to show on the dashboard. Only ticked campaigns are pulled from Meta (twice a day and on Refresh).' }));
+      var already = (data.catalog.items || []).filter(function (c) { return tracked[c.id] && (!selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1); }).length;
+      panel.appendChild(h('p', { 'class': 'muted', text: 'Tick the campaigns to add to the dashboard. They join the ' + data.tracked.length + ' already there' + (already ? ' (' + already + ' from these accounts are hidden because they are already on it)' : '') + '. Only dashboard campaigns are pulled from Meta.' }));
       var search = h('input', { 'class': 'table__input', placeholder: 'Search campaigns…', type: 'search' });
       var list = h('div', { 'class': 'picker__list' });
       var countEl = h('span', { 'class': 'muted' });
@@ -647,16 +721,16 @@
             var box = h('input', { type: 'checkbox', checked: !!chosen[c.id] });
             var item = h('label', { 'class': 'picker__item' + (chosen[c.id] ? ' is-added' : '') }, [box,
               h('div', { 'class': 'picker__text' }, [h('strong', { text: c.name }), h('span', { text: 'ID ' + c.id + (c.status ? ' · ' + c.status : '') + (c.objective ? ' · ' + c.objective : '') })]),
-              h('span', { 'class': 'picker__show', text: chosen[c.id] ? 'On dashboard' : 'Show on dashboard' })]);
-            box.addEventListener('change', function () { if (box.checked) chosen[c.id] = c; else delete chosen[c.id]; item.classList.toggle('is-added', box.checked); item.lastChild.textContent = box.checked ? 'On dashboard' : 'Show on dashboard'; countEl.textContent = selectedCount() + ' on dashboard'; });
+              h('span', { 'class': 'picker__show', text: chosen[c.id] ? 'Adding' : 'Add' })]);
+            box.addEventListener('change', function () { if (box.checked) chosen[c.id] = c; else delete chosen[c.id]; item.classList.toggle('is-added', box.checked); item.lastChild.textContent = box.checked ? 'Adding' : 'Add'; countEl.textContent = selectedCount() + ' to add'; });
             list.appendChild(item);
           });
         });
         if (!list.children.length) {
-          list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
+          list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : already ? 'Every campaign from these accounts is already on the dashboard.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
           if (waiting || !catalog.length) list.appendChild(diagnostics());
         }
-        countEl.textContent = selectedCount() + ' on dashboard';
+        countEl.textContent = selectedCount() + ' to add';
       }
       search.addEventListener('input', drawList);
       var manualId = h('input', { 'class': 'table__input', placeholder: 'Campaign ID (numbers only)', inputmode: 'numeric' });
@@ -669,10 +743,12 @@
       } }, ['Add by ID']);
       var back = h('button', { 'class': 'btn', type: 'button', onclick: function () { step = 1; draw(); } }, ['Back']);
       var save = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: function () {
+        var adding = Object.keys(chosen).map(function (id) { return chosen[id]; });
+        if (!adding.length) { say('error', 'Tick at least one campaign to add.'); return; }
         save.disabled = true;
-        request('PUT', '/api/tracked', { campaigns: Object.keys(chosen).map(function (id) { return chosen[id]; }) })
-          .then(function (o) { overlay.remove(); apply(o); setNotice('ok', o.tracked.length + ' campaign' + (o.tracked.length === 1 ? '' : 's') + ' on the dashboard. Press Refresh to pull their numbers now.'); }, function (err) { save.disabled = false; say('error', err.message); });
-      } }, ['Save to dashboard']);
+        request('PUT', '/api/tracked', { campaigns: data.tracked.concat(adding) })
+          .then(function (o) { overlay.remove(); apply(o); setNotice('ok', adding.length + ' campaign' + (adding.length === 1 ? '' : 's') + ' added (' + o.tracked.length + ' on the dashboard). Pulling their numbers…'); doRefresh(); }, function (err) { save.disabled = false; say('error', err.message); });
+      } }, ['Add to dashboard']);
       panel.appendChild(search); panel.appendChild(list);
       panel.appendChild(h('div', { 'class': 'picker__manual' }, [manualId, manualName, manualAdd]));
       panel.appendChild(h('div', { 'class': 'picker__foot' }, [h('div', { 'class': 'btn-row' }, [back, countEl]), save]));
@@ -753,7 +829,8 @@
   function setNotice(kind, text) { notice.hidden = !text; notice.className = 'notice' + (kind ? ' notice--' + kind : ''); notice.lastChild.textContent = text || ''; }
   var body = h('div', {});
   var refreshBtn = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: doRefresh }, ['Refresh']);
-  var chooseBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openPicker(); } }, ['Choose campaigns']);
+  var chooseBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openPicker('add'); } }, ['Add campaigns']);
+  var editBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openPicker('edit'); } }, ['Edit campaigns']);
   var subtitle = h('div', { 'class': 'muted' });
   var frameSel = h('select', { 'class': 'table__input frame__select', title: 'Timeframe' }, PRESETS.map(function (o) { return h('option', { value: o[0], text: o[1] }); }));
   var sinceIn = h('input', { 'class': 'table__input frame__date', type: 'date' });
@@ -766,7 +843,7 @@
   [sinceIn, untilIn].forEach(function (inp) { inp.addEventListener('change', function () { frame.since = sinceIn.value; frame.until = untilIn.value; saveFrame(); if (data) render(); }); });
   root.appendChild(h('div', { 'class': 'perf-toolbar' }, [
     h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]),
-    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), h('button', { 'class': 'btn', type: 'button', onclick: openMetrics }, ['Metrics']), chooseBtn, refreshBtn])
+    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), h('button', { 'class': 'btn', type: 'button', onclick: openMetrics }, ['Metrics']), chooseBtn, editBtn, refreshBtn])
   ]));
   root.appendChild(notice);
   root.appendChild(body);
@@ -814,15 +891,16 @@
     if (!d.tracked.length) {
       body.appendChild(h('div', { 'class': 'card perf-empty' }, [
         h('h3', { text: 'No campaigns tracked yet' }),
-        h('p', { 'class': 'muted', text: 'Press "Choose campaigns", then Refresh. Hermes pulls only the chosen campaigns, at 8:00 and 15:00 Adelaide time and whenever you press Refresh.' }),
+        h('p', { 'class': 'muted', text: 'Press "Add campaigns" to pick the Meta campaigns to show. Only those are pulled, at 8:00 and 15:00 Adelaide time and whenever you press Refresh.' }),
         h('p', { 'class': 'muted', text: 'Step 1 picks the ad accounts, step 2 asks Hermes for their campaign list, step 3 ticks what shows here.' })
       ]));
       return;
     }
     var r = rangeOf(frame);
+    currentRange = r;
     var on = d.tracked.filter(function (t) { return isOn(t.id); });
     var sr = series(on, r);
-    body.appendChild(h('div', { 'class': 'con__head mono' }, [h('span', { text: 'Campaigns · ' + pad(on.length) + ' / ' + pad(d.tracked.length) + ' on' }), h('span', { text: r.label + ' · ' + (d.source === 'meta' ? 'direct from Meta' : 'via Hermes') + ' · vs previous ' + sr.days + ' day' + (sr.days === 1 ? '' : 's') })]));
+    body.appendChild(h('div', { 'class': 'con__head mono' }, [h('span', { text: 'Campaigns · ' + pad(on.length) + ' / ' + pad(d.tracked.length) + ' on' }), h('span', { text: r.label + ' · ' + (d.source === 'meta' ? 'direct from Meta' : 'via Hermes') + ' · changes vs ' + compareLabel(r) })]));
     body.appendChild(hero(sr, r, on));
     body.appendChild(summaryCards(sr, r, on));
     body.appendChild(bestCreatives(on, r));
