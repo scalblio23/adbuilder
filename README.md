@@ -149,8 +149,13 @@ PUT /api/v1/campaign-stats
                           "daily": [ { "date": "2026-09-13", "spend": 0, "impressions": 0, "reach": 0, "clicksAll": 0, "linkClicks": 0, "results": 0 } ] } ] } ] }
 ```
 
-The page computes CPM, cost per link click, CTR (all), link CTR, frequency (impressions ÷ reach),
-results and cost per result for the chosen timeframe (today, yesterday, last 7/14/30 days, this or
+The tiles and campaign cards show a chosen set of up to 15 metrics (Metrics button, stored in
+`settings/dashboard` and shared by everyone) from a catalogue of about sixty Ads Manager metrics:
+spend, delivery, clicks and CTRs, cost per click/link click/outbound click/landing page view,
+results and result rate, website conversions (leads, schedules, purchases, contacts, registrations,
+carts, checkouts, …) with their costs, purchase value and ROAS, conversations, engagement (post,
+page, reactions, comments, shares, saves, page likes) and video (plays, 3-second plays, ThruPlays,
+25/50/75/100% plays). Everything is computed for the chosen timeframe (today, yesterday, last 7/14/30 days, this or
 last month, maximum, or a custom range) from those daily rows, and shows the ad-by-ad breakdown
 under each campaign. Frequency over a range is approximate because daily reach is summed.
 

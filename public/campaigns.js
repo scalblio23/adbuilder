@@ -42,25 +42,113 @@
   function ago(ts) { if (!ts) return 'never'; var m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; }
 
   // ---- numbers ----
-  var KEYS = ['spend', 'impressions', 'reach', 'clicksAll', 'linkClicks', 'results', 'revenue', 'purchases', 'leads', 'newLeads', 'calls'];
+  var KEYS = ['spend', 'impressions', 'reach', 'clicksAll', 'linkClicks', 'uniqueClicks', 'uniqueLinkClicks', 'outboundClicks', 'landingPageViews', 'results', 'revenue', 'purchases', 'leads', 'newLeads', 'calls',
+    'postEngagement', 'pageEngagement', 'reactions', 'comments', 'shares', 'saves', 'pageLikes', 'videoPlays', 'videoViews3s', 'thruplays', 'videoP25', 'videoP50', 'videoP75', 'videoP100', 'messaging', 'socialSpend'];
+  // Every metric the tiles and cards can show. "conv.x" keys are the standard website/app events each row carries.
+  var CATALOG = [
+    { g: 'Spend & delivery', key: 'spend', label: 'Amount spent', fmt: money, low: true, color: '#e5534b' },
+    { g: 'Spend & delivery', key: 'impressions', label: 'Impressions', fmt: count },
+    { g: 'Spend & delivery', key: 'reach', label: 'Reach', fmt: count },
+    { g: 'Spend & delivery', key: 'frequency', label: 'Frequency', fmt: ratio, low: true },
+    { g: 'Spend & delivery', key: 'cpm', label: 'CPM', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Spend & delivery', key: 'cpp', label: 'Cost per 1,000 reached', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Spend & delivery', key: 'socialSpend', label: 'Social spend', fmt: money, low: true },
+    { g: 'Results', key: 'results', label: 'Results', fmt: count, color: '#3ec27a', dyn: true },
+    { g: 'Results', key: 'costPerResult', label: 'Cost per result', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Results', key: 'resultRate', label: 'Result rate', fmt: pct },
+    { g: 'Clicks', key: 'clicksAll', label: 'Clicks (all)', fmt: count },
+    { g: 'Clicks', key: 'linkClicks', label: 'Link clicks', fmt: count },
+    { g: 'Clicks', key: 'uniqueClicks', label: 'Unique clicks (all)', fmt: count },
+    { g: 'Clicks', key: 'uniqueLinkClicks', label: 'Unique link clicks', fmt: count },
+    { g: 'Clicks', key: 'outboundClicks', label: 'Outbound clicks', fmt: count },
+    { g: 'Clicks', key: 'landingPageViews', label: 'Landing page views', fmt: count },
+    { g: 'Clicks', key: 'ctrAll', label: 'CTR (all)', fmt: pct, color: '#7aa7ff' },
+    { g: 'Clicks', key: 'linkCtr', label: 'Link CTR', fmt: pct, color: '#7aa7ff' },
+    { g: 'Clicks', key: 'uniqueLinkCtr', label: 'Unique link CTR', fmt: pct, color: '#7aa7ff' },
+    { g: 'Clicks', key: 'outboundCtr', label: 'Outbound CTR', fmt: pct, color: '#7aa7ff' },
+    { g: 'Clicks', key: 'cpc', label: 'CPC (all)', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Clicks', key: 'cplc', label: 'CPLC', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Clicks', key: 'costPerOutbound', label: 'Cost per outbound click', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Clicks', key: 'costPerLpv', label: 'Cost per landing page view', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Conversions', key: 'leads', label: 'Leads', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'cpl', label: 'Cost per lead', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Conversions', key: 'conv.schedule', label: 'Schedules', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'costPerSchedule', label: 'Cost per schedule', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Conversions', key: 'purchases', label: 'Purchases', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'costPerSale', label: 'Cost per purchase', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Conversions', key: 'revenue', label: 'Purchase value', fmt: money, color: '#3ec27a' },
+    { g: 'Conversions', key: 'roas', label: 'Purchase ROAS', fmt: ratio, color: '#3ec27a' },
+    { g: 'Conversions', key: 'conv.contact', label: 'Contacts', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'conv.complete_registration', label: 'Registrations', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'conv.submit_application', label: 'Applications', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'conv.add_to_cart', label: 'Adds to cart', fmt: count },
+    { g: 'Conversions', key: 'conv.initiate_checkout', label: 'Checkouts initiated', fmt: count },
+    { g: 'Conversions', key: 'conv.view_content', label: 'Content views', fmt: count },
+    { g: 'Conversions', key: 'conv.subscribe', label: 'Subscriptions', fmt: count },
+    { g: 'Conversions', key: 'conv.start_trial', label: 'Trials started', fmt: count },
+    { g: 'Conversions', key: 'messaging', label: 'Conversations started', fmt: count, color: '#3ec27a' },
+    { g: 'Conversions', key: 'costPerMessaging', label: 'Cost per conversation', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Conversions', key: 'calls', label: 'Calls', fmt: count },
+    { g: 'Engagement', key: 'postEngagement', label: 'Post engagement', fmt: count },
+    { g: 'Engagement', key: 'costPerEngagement', label: 'Cost per post engagement', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Engagement', key: 'pageEngagement', label: 'Page engagement', fmt: count },
+    { g: 'Engagement', key: 'reactions', label: 'Post reactions', fmt: count },
+    { g: 'Engagement', key: 'comments', label: 'Post comments', fmt: count },
+    { g: 'Engagement', key: 'shares', label: 'Post shares', fmt: count },
+    { g: 'Engagement', key: 'saves', label: 'Post saves', fmt: count },
+    { g: 'Engagement', key: 'pageLikes', label: 'Page likes', fmt: count },
+    { g: 'Video', key: 'videoPlays', label: 'Video plays', fmt: count },
+    { g: 'Video', key: 'videoViews3s', label: '3-second video plays', fmt: count },
+    { g: 'Video', key: 'thruplays', label: 'ThruPlays', fmt: count },
+    { g: 'Video', key: 'costPerThruplay', label: 'Cost per ThruPlay', fmt: money, low: true, color: '#e0a52b' },
+    { g: 'Video', key: 'thruplayRate', label: 'ThruPlay rate', fmt: pct },
+    { g: 'Video', key: 'videoP25', label: 'Video plays at 25%', fmt: count },
+    { g: 'Video', key: 'videoP50', label: 'Video plays at 50%', fmt: count },
+    { g: 'Video', key: 'videoP75', label: 'Video plays at 75%', fmt: count },
+    { g: 'Video', key: 'videoP100', label: 'Video plays at 100%', fmt: count }
+  ];
+  var BY_KEY = {}; CATALOG.forEach(function (c) { BY_KEY[c.key] = c; });
+  var MAX_METRICS = 15;
   function derive(m) {
     m = m || {};
     var out = Object.assign({}, m);
     var link = m.linkClicks != null ? m.linkClicks : null;
     var all = m.clicksAll != null ? m.clicksAll : null;
+    var per = function (n) { return n ? (m.spend || 0) / n : null; };
     out.cpm = m.impressions ? (m.spend || 0) / m.impressions * 1000 : null;
-    out.cplc = link ? (m.spend || 0) / link : null;
+    out.cpp = m.reach ? (m.spend || 0) / m.reach * 1000 : null;
+    out.cpc = per(all);
+    out.cplc = per(link);
+    out.costPerOutbound = per(m.outboundClicks);
+    out.costPerLpv = per(m.landingPageViews);
     out.ctrAll = all != null && m.impressions ? all / m.impressions : null;
     out.linkCtr = link != null && m.impressions ? link / m.impressions : null;
+    out.uniqueLinkCtr = m.uniqueLinkClicks != null && m.impressions ? m.uniqueLinkClicks / m.impressions : null;
+    out.outboundCtr = m.outboundClicks != null && m.impressions ? m.outboundClicks / m.impressions : null;
     out.frequency = m.reach ? (m.impressions || 0) / m.reach : null;
-    out.costPerResult = m.results ? (m.spend || 0) / m.results : null;
+    out.costPerResult = per(m.results);
+    out.resultRate = m.impressions && m.results != null ? m.results / m.impressions : null;
     out.profit = m.revenue != null ? m.revenue - (m.spend || 0) : null;
     out.roas = div(m.revenue, m.spend);
-    out.cpl = div(m.spend, m.leads);
-    out.costPerSale = div(m.spend, m.purchases);
+    out.cpl = per(m.leads);
+    out.costPerSale = per(m.purchases);
+    out.costPerSchedule = per(m['conv.schedule']);
+    out.costPerMessaging = per(m.messaging);
+    out.costPerEngagement = per(m.postEngagement);
+    out.costPerThruplay = per(m.thruplays);
+    out.thruplayRate = m.impressions && m.thruplays != null ? m.thruplays / m.impressions : null;
     return out;
   }
-  function sum(list) { var out = {}; list.forEach(function (m) { KEYS.forEach(function (k) { if (m && m[k] != null) out[k] = (out[k] || 0) + m[k]; }); }); return out; }
+  function sum(list) {
+    var out = {};
+    list.forEach(function (m) {
+      if (!m) return;
+      KEYS.forEach(function (k) { if (m[k] != null) out[k] = (out[k] || 0) + m[k]; });
+      if (m.conv) Object.keys(m.conv).forEach(function (k) { out['conv.' + k] = (out['conv.' + k] || 0) + m.conv[k]; });
+      Object.keys(m).forEach(function (k) { if (k.indexOf('conv.') === 0) out[k] = (out[k] || 0) + m[k]; });
+    });
+    return out;
+  }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function dayKey(offset) { var d = new Date(); d.setDate(d.getDate() - offset); return iso(d); }
@@ -246,22 +334,17 @@
       h('div', { 'class': 'split__legend' }, legend.concat(best ? [h('div', { 'class': 'split__row is-best split__row--note' }, [h('span', { 'class': 'split__dot' }), h('span', { 'class': 'split__name', text: 'Best cost per result' }), h('span', { 'class': 'split__val', text: best.t.name + ' · ' + money(best.cpr) })])] : []))
     ]);
   }
+  // The chosen metrics as tile/cell definitions (the Results label follows the campaigns' result type).
+  function chosenDefs(rlabel) {
+    var keys = (data && data.dashboard && data.dashboard.metrics) || [];
+    return keys.map(function (k) { return BY_KEY[k]; }).filter(Boolean).map(function (c) { return { key: c.key, label: c.dyn ? rlabel : c.label, fmt: c.fmt, lowerIsBetter: !!c.low, color: c.color }; });
+  }
   function summaryCards(sr, r, tracked) {
     var c = sr.current, p = sr.previous, rows = sr.anyDaily ? sr.rows : null;
-    var rlabel = resultLabel(tracked);
-    var defs = [
-      { key: 'spend', label: 'Amount spent', fmt: money, lowerIsBetter: true, color: '#e5534b' },
-      { key: 'results', label: rlabel, fmt: count, color: '#3ec27a' },
-      { key: 'costPerResult', label: 'Cost per result', fmt: money, lowerIsBetter: true, color: '#e0a52b' },
-      { key: 'impressions', label: 'Impressions', fmt: count },
-      { key: 'reach', label: 'Reach', fmt: count },
-      { key: 'cpm', label: 'CPM', fmt: money, lowerIsBetter: true, color: '#e0a52b' },
-      { key: 'cplc', label: 'CPLC', fmt: money, lowerIsBetter: true, color: '#e0a52b' },
-      { key: 'ctrAll', label: 'CTR (all)', fmt: pct, color: '#7aa7ff' },
-      { key: 'linkCtr', label: 'Link CTR', fmt: pct, color: '#7aa7ff' },
-      { key: 'frequency', label: 'Frequency', fmt: ratio, lowerIsBetter: true }
-    ];
-    return h('div', { 'class': 'tiles' }, defs.map(function (def) { return tile(def, c, p, rows); }));
+    var defs = chosenDefs(resultLabel(tracked));
+    var grid = h('div', { 'class': 'tiles' }, defs.map(function (def) { return tile(def, c, p, rows); }));
+    grid.appendChild(h('button', { 'class': 'tile tile--add', type: 'button', title: 'Choose which metrics to show', onclick: openMetrics }, [h('span', { 'class': 'tile__plus', text: '+' }), h('span', { 'class': 'tile__label', text: defs.length + ' / ' + MAX_METRICS + ' metrics' })]));
+    return grid;
   }
 
   // ---- campaign rows ----
@@ -272,12 +355,7 @@
   }
   function rowMetric(value, label, cls) { return h('div', { 'class': 'crow__metric' }, [h('div', { 'class': 'crow__num ' + (cls || ''), text: value }), h('div', { 'class': 'crow__label', text: label })]); }
   function metricCells(m, rlabel, none) {
-    var v = function (f) { return none ? '–' : f; };
-    return [
-      rowMetric(v(money(m.spend || 0, 2)), 'Amount spent'), rowMetric(v(count(m.results)), rlabel), rowMetric(v(money(m.costPerResult)), 'Cost / result'),
-      rowMetric(v(count(m.impressions)), 'Impressions'), rowMetric(v(money(m.cpm)), 'CPM'), rowMetric(v(pct(m.ctrAll)), 'CTR (all)'),
-      rowMetric(v(pct(m.linkCtr)), 'Link CTR'), rowMetric(v(money(m.cplc)), 'CPLC'), rowMetric(v(ratio(m.frequency)), 'Frequency'), rowMetric(v(count(m.linkClicks)), 'Link clicks')
-    ];
+    return chosenDefs(rlabel).map(function (def) { return rowMetric(none ? '–' : def.fmt(m[def.key]), def.label); });
   }
   function adRow(ad, r, rlabel, key) {
     var daily = inRange(withResults(ad.daily, key), r.since, r.until);
@@ -508,6 +586,72 @@
     draw();
   }
 
+  // ---- metrics chooser: up to 15 from the catalogue, in the order they will appear ----
+  function openMetrics() {
+    var chosen = ((data && data.dashboard && data.dashboard.metrics) || []).filter(function (k) { return BY_KEY[k]; });
+    var panel = h('div', { 'class': 'picker__panel picker__panel--wide' });
+    var overlay = h('div', { 'class': 'picker' }, [panel]);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+    var countEl = h('span', { 'class': 'mono' });
+    var status = h('div', { 'class': 'notice', hidden: '' }, [h('span', { 'class': 'notice__dot' }), h('span')]);
+    function say(kind, text) { status.hidden = !text; status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = text || ''; }
+    var selected = h('div', { 'class': 'mlist' });
+    var catalog = h('div', { 'class': 'mcat' });
+    var search = h('input', { 'class': 'table__input', type: 'search', placeholder: 'Search metrics…' });
+    function drawSelected() {
+      selected.innerHTML = '';
+      countEl.textContent = chosen.length + ' / ' + MAX_METRICS + ' chosen · shown in this order';
+      if (!chosen.length) selected.appendChild(h('p', { 'class': 'muted', text: 'Nothing chosen yet. Tick metrics on the right.' }));
+      chosen.forEach(function (k, i) {
+        var c = BY_KEY[k];
+        selected.appendChild(h('div', { 'class': 'mlist__row' }, [
+          h('span', { 'class': 'mono', text: pad(i + 1) }), h('span', { 'class': 'mlist__name', text: c.label }), h('span', { 'class': 'mono mlist__group', text: c.g }),
+          h('button', { 'class': 'mlist__btn', type: 'button', title: 'Move up', disabled: i === 0, onclick: function () { chosen.splice(i - 1, 0, chosen.splice(i, 1)[0]); drawSelected(); } }, ['▲']),
+          h('button', { 'class': 'mlist__btn', type: 'button', title: 'Move down', disabled: i === chosen.length - 1, onclick: function () { chosen.splice(i + 1, 0, chosen.splice(i, 1)[0]); drawSelected(); } }, ['▼']),
+          h('button', { 'class': 'mlist__btn mlist__btn--x', type: 'button', title: 'Remove', onclick: function () { chosen.splice(i, 1); drawSelected(); drawCatalog(); } }, ['×'])
+        ]));
+      });
+    }
+    function drawCatalog() {
+      catalog.innerHTML = '';
+      var q = search.value.trim().toLowerCase();
+      var groups = [];
+      CATALOG.forEach(function (c) { if (q && (c.label + ' ' + c.g).toLowerCase().indexOf(q) === -1) return; if (groups.indexOf(c.g) === -1) groups.push(c.g); });
+      groups.forEach(function (g) {
+        catalog.appendChild(h('div', { 'class': 'picker__group', text: g }));
+        CATALOG.filter(function (c) { return c.g === g && (!q || (c.label + ' ' + c.g).toLowerCase().indexOf(q) !== -1); }).forEach(function (c) {
+          var on = chosen.indexOf(c.key) !== -1;
+          var full = !on && chosen.length >= MAX_METRICS;
+          var box = h('input', { type: 'checkbox', checked: on, disabled: full });
+          var item = h('label', { 'class': 'mcat__item' + (on ? ' is-added' : '') + (full ? ' is-full' : '') }, [box, h('span', { text: c.label })]);
+          box.addEventListener('change', function () {
+            if (box.checked) { if (chosen.length >= MAX_METRICS) { box.checked = false; say('error', 'Maximum ' + MAX_METRICS + ' metrics. Remove one first.'); return; } chosen.push(c.key); }
+            else chosen.splice(chosen.indexOf(c.key), 1);
+            say('', ''); drawSelected(); drawCatalog();
+          });
+          catalog.appendChild(item);
+        });
+      });
+      if (!catalog.children.length) catalog.appendChild(h('p', { 'class': 'muted', text: 'Nothing matches.' }));
+    }
+    search.addEventListener('input', drawCatalog);
+    var save = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: function () {
+      if (!chosen.length) { say('error', 'Choose at least one metric.'); return; }
+      save.disabled = true;
+      request('PUT', '/api/dashboard', { metrics: chosen }).then(function (dash) { data.dashboard = dash; overlay.remove(); render(); setNotice('ok', dash.metrics.length + ' metrics on the dashboard.'); }, function (err) { save.disabled = false; say('error', err.message); });
+    } }, ['Save metrics']);
+    var reset = h('button', { 'class': 'btn', type: 'button', onclick: function () { chosen = ['spend', 'results', 'costPerResult', 'impressions', 'reach', 'cpm', 'cplc', 'ctrAll', 'linkCtr', 'frequency']; drawSelected(); drawCatalog(); } }, ['Reset to default']);
+    panel.appendChild(h('div', { 'class': 'picker__head' }, [h('div', {}, [h('h2', { 'class': 'card__title', text: 'Choose metrics', style: 'margin:0' }), h('div', { 'class': 'muted', text: 'Everything Ads Manager reports that this page pulls. Up to ' + MAX_METRICS + ' at a time, shared by everyone who opens the dashboard.' })]), h('button', { 'class': 'btn', type: 'button', onclick: function () { overlay.remove(); } }, ['Close'])]));
+    panel.appendChild(status);
+    panel.appendChild(h('div', { 'class': 'mgrid' }, [
+      h('div', { 'class': 'mgrid__col' }, [countEl, selected]),
+      h('div', { 'class': 'mgrid__col' }, [search, catalog])
+    ]));
+    panel.appendChild(h('div', { 'class': 'picker__foot' }, [reset, save]));
+    document.body.appendChild(overlay);
+    drawSelected(); drawCatalog();
+  }
+
   // ---- page ----
   var data = null, notice = h('div', { 'class': 'notice', hidden: '' }, [h('span', { 'class': 'notice__dot' }), h('span')]);
   function setNotice(kind, text) { notice.hidden = !text; notice.className = 'notice' + (kind ? ' notice--' + kind : ''); notice.lastChild.textContent = text || ''; }
@@ -526,7 +670,7 @@
   [sinceIn, untilIn].forEach(function (inp) { inp.addEventListener('change', function () { frame.since = sinceIn.value; frame.until = untilIn.value; saveFrame(); if (data) render(); }); });
   root.appendChild(h('div', { 'class': 'perf-toolbar' }, [
     h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]),
-    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), chooseBtn, refreshBtn])
+    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), h('button', { 'class': 'btn', type: 'button', onclick: openMetrics }, ['Metrics']), chooseBtn, refreshBtn])
   ]));
   root.appendChild(notice);
   root.appendChild(body);

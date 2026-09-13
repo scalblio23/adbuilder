@@ -780,3 +780,23 @@ a.adrow__name:hover { color: var(--accent); }
 .perf-page .metacard { background: var(--con-panel); border: 1px solid var(--con-line); border-radius: 14px; }
 .perf-page .picker__panel { background: var(--con-panel); border-color: var(--con-line-strong); }
 @media (max-width: 640px) { .perf-page { padding: 14px; } .hero__nums { gap: 18px; } .hero__but { display: none; } .split__legend { grid-template-columns: 1fr; } }
+
+/* metrics chooser */
+.tile--add { cursor: pointer; border-style: dashed !important; background: transparent !important; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); font: inherit; }
+.tile--add:hover { color: var(--text); border-color: var(--con-green) !important; }
+.tile__plus { font-size: 34px; line-height: 1; font-weight: 300; }
+.mgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; min-height: 0; flex: 1; overflow: hidden; }
+.mgrid__col { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.mlist { display: flex; flex-direction: column; gap: 6px; }
+.mlist__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.mlist__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mlist__group { font-size: 10px; letter-spacing: 0.08em; }
+.mlist__btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 11px; }
+.mlist__btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-muted); } .mlist__btn:disabled { opacity: 0.3; cursor: default; }
+.mlist__btn--x:hover { color: var(--danger); border-color: var(--danger); }
+.mcat { display: flex; flex-direction: column; gap: 4px; }
+.mcat__item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.mcat__item:hover { background: var(--bg-hover); }
+.mcat__item.is-added { color: var(--con-green, #3ec27a); }
+.mcat__item.is-full { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 640px) { .mgrid { grid-template-columns: 1fr; } }
