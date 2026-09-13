@@ -370,6 +370,23 @@
       h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b')])
     ]);
   }
+  // What Meta reported for this campaign: optimisation per ad set and every action type seen in the stored days.
+  function metaSays(t) {
+    var st = t.stats, acts = {};
+    (st.daily || []).forEach(function (d) { Object.keys(d.actions || {}).forEach(function (k) { acts[k] = (acts[k] || 0) + d.actions[k]; }); });
+    var keys = Object.keys(acts).sort(function (a, b) { return acts[b] - acts[a]; });
+    var opt = (st.optimisation || []).map(function (o) { return (o.name || o.id) + ': ' + (o.goal || '?').toLowerCase().replace(/_/g, ' ') + (o.event ? ' · ' + o.event.toLowerCase().replace(/_/g, ' ') : '') + (o.customConversionId ? ' · custom conversion ' + o.customConversionId : ''); });
+    var det = h('details', { 'class': 'metasays' }, [
+      h('summary', { 'class': 'crow__label', text: 'Meta says: result = ' + (st.resultKey || '?') + (opt.length ? ' · ' + opt.length + ' ad set' + (opt.length === 1 ? '' : 's') : '') + ' · ' + keys.length + ' action types seen' }),
+      h('div', { 'class': 'metasays__body' }, [
+        h('div', { 'class': 'mono', text: 'Optimisation' }),
+        h('div', { text: opt.length ? opt.join('  |  ') : 'No ad set data yet (refresh).' }),
+        h('div', { 'class': 'mono', style: 'margin-top:6px', text: 'Action types in stored days' }),
+        h('div', { text: keys.length ? keys.map(function (k) { return k + ' ' + count(acts[k]); }).join('  ·  ') : 'None recorded.' })
+      ])
+    ]);
+    return det;
+  }
   function isOn(id) { try { return localStorage.getItem('adbuilder.campaignOn.' + id) !== '0'; } catch (e) { return true; } }
   function setOn(id, on) { try { localStorage.setItem('adbuilder.campaignOn.' + id, on ? '1' : '0'); } catch (e) {} }
   function campaignRow(t, r) {
@@ -424,7 +441,8 @@
           h('div', { 'class': 'crow__name', text: t.name }),
           h('div', { 'class': 'crow__meta' }, [statusBadge(t.status), h('span', { text: (t.adAccountName || t.adAccountId || '') }), h('span', { 'class': 'crow__cid', text: 'ID ' + t.id })]),
           h('div', { 'class': 'crow__actions' }, [toggle, resultSel]),
-          h('div', { 'class': 'crow__label', text: st ? 'Synced ' + ago(st.syncedAt) : 'No data yet' })
+          h('div', { 'class': 'crow__label', text: st ? 'Synced ' + ago(st.syncedAt) : 'No data yet' }),
+          st ? metaSays(t) : null
         ]),
         h('div', { 'class': 'crow__metrics' }, metricCells(m, rlabel, none)),
         h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b'), h('div', { 'class': 'crow__label', text: 'Spend' })]),

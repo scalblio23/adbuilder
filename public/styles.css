@@ -800,3 +800,4 @@ a.adrow__name:hover { color: var(--accent); }
 .mcat__item.is-added { color: var(--con-green, #3ec27a); }
 .mcat__item.is-full { opacity: 0.45; cursor: not-allowed; }
 @media (max-width: 640px) { .mgrid { grid-template-columns: 1fr; } }
+.metasays { margin-top: 6px; } .metasays summary { cursor: pointer; list-style: none; } .metasays summary::before { content: '▸ '; } .metasays[open] summary::before { content: '▾ '; } .metasays__body { margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12px; color: var(--text-muted); word-break: break-word; }
