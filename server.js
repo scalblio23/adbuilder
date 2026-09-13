@@ -6,8 +6,6 @@
 var http = require('http');
 var fs = require('fs');
 var path = require('path');
-var handlers = require('./lib/handlers');
-var api = require('./lib/api');
 var store = require('./lib/store');
 
 var PORT = parseInt(process.env.PORT, 10) || 8080;
@@ -51,53 +49,16 @@ function serveStatic(req, res) {
   });
 }
 
-var health = require('./api/health');
 
-// API routes: [pattern, handler(req, res, id, body)]
-var ROUTES = [
-  [/^\/api\/ad-accounts(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? handlers.item(req, res, id, body) : handlers.collection(req, res, body); }],
-  [/^\/api\/campaigns(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? api.campaign(req, res, id, body) : api.campaigns(req, res, body); }],
-  [/^\/api\/creatives(?:\/([^/]+))?\/?$/, function (req, res, id, body) { id ? api.creative(req, res, id, body) : api.creatives(req, res, body); }],
-  [/^\/api\/settings\/webhook-secret\/?$/, function (req, res) { api.webhookSecret(req, res); }],
-  [/^\/api\/settings\/?$/, function (req, res, id, body) { api.settings(req, res, body); }],
-  [/^\/api\/hermes\/launch\/?$/, function (req, res, id, body) { api.hermesLaunch(req, res, body); }],
-  [/^\/api\/hermes\/accounts\/?$/, function (req, res, id, body) { api.hermesAccounts(req, res, body); }],
-  [/^\/api\/ai\/settings\/?$/, function (req, res, id, body) { api.aiSettings(req, res, body); }],
-  [/^\/api\/ai\/test\/?$/, function (req, res) { api.aiTest(req, res); }],
-  [/^\/api\/ai\/generate\/?$/, function (req, res, id, body) { api.aiGenerate(req, res, body); }],
-  [/^\/api\/swipes\/?$/, function (req, res, id, body) { api.swipes(req, res, body); }],
-  [/^\/api\/swipes\/([^/]+)\/?$/, function (req, res, id, body) { api.swipe(req, res, id, body); }],
-  [/^\/api\/v1\/swipes\/?$/, function (req, res, id, body) { api.inbound.swipes(req, res, null, body); }],
-  [/^\/api\/v1\/creatives\/?$/, function (req, res, id, body) { api.inbound.creatives(req, res, null, body); }],
-  [/^\/api\/meta\/?$/, function (req, res) { api.meta(req, res); }],
-  [/^\/api\/v1\/meta\/?$/, function (req, res, id, body) { api.inbound.meta(req, res, null, body); }],
-  [/^\/api\/hermes\/meta\/?$/, function (req, res) { api.hermesMeta(req, res); }],
-  [/^\/api\/apikey\/?$/, function (req, res, id, body) { api.apiKey(req, res, body); }],
-  [/^\/api\/v1\/ping\/?$/, function (req, res) { api.inbound.ping(req, res); }],
-  [/^\/api\/v1\/campaigns\/?$/, function (req, res) { api.inbound.campaigns(req, res); }],
-  [/^\/api\/v1\/campaigns\/([^/]+)\/status\/?$/, function (req, res, id, body) { api.inbound.status(req, res, id, body); }],
-  [/^\/api\/v1\/campaigns\/([^/]+)\/?$/, function (req, res, id) { api.inbound.campaign(req, res, id); }],
-  [/^\/api\/hermes\/test\/?$/, function (req, res, id, body) { api.hermesTest(req, res, body); }],
-  [/^\/api\/hermes\/preview\/?$/, function (req, res, id, body) {
-    var q = {}; String(req.url.split('?')[1] || '').split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || ''); });
-    api.hermesPreview(req, res, body, q);
-  }]
-];
+var router = require('./lib/router');
 
 http.createServer(function (req, res) {
-  var pathname = req.url.split('?')[0];
-  if (pathname === '/api/health') return health(req, res);
-  if (/^\/api\/(v1\/)?creatives\/import\/?$/.test(pathname)) {
-    if (/multipart\/form-data/i.test(String(req.headers['content-type'] || ''))) return api.inbound.importCreative(req, res, null, undefined);
-    return readBody(req, function (body) { api.inbound.importCreative(req, res, null, body); });
+  var found = router.match(req);
+  if (found) {
+    if (router.isMultipart(req)) return found.handler(req, res, found.id, undefined);
+    return readBody(req, function (body) { found.handler(req, res, found.id, body); });
   }
-  for (var i = 0; i < ROUTES.length; i++) {
-    var match = ROUTES[i][0].exec(pathname);
-    if (match) {
-      var handle = ROUTES[i][1];
-      return readBody(req, function (body) { handle(req, res, match[1], body); });
-    }
-  }
+  if (/^\/api\//.test((req.url || '').split('?')[0])) { res.writeHead(404, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: 'No such API route' })); }
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   serveStatic(req, res);
 }).listen(PORT, function () {
