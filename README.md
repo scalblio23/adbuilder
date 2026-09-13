@@ -141,11 +141,12 @@ Campaigns that are not tracked are ignored. The page polls for the new numbers a
 
 The Hermes section at the bottom of the Ad Builder page handles both directions.
 
-**AdBuilder calling Hermes** (Launch button, Refresh from Hermes, Test connection): Hermes
-receives webhooks on `WEBHOOK_PORT` (8644) and verifies each request with the route's secret.
-In the Hermes card's "Send to Hermes" section, press "Generate secret": AdBuilder creates the
-`WEBHOOK_SECRET`, shows it once, and signs everything it sends with it. The card also shows the
-route to add to `~/.hermes/config.yaml` (copy it while the secret is visible):
+**AdBuilder calling Hermes** (Launch, Refresh, Pull campaigns, Test connection): Hermes
+receives webhooks on `WEBHOOK_PORT` (8644) and verifies each request against the
+`WEBHOOK_SECRET` in its `.env`. The same value must be in AdBuilder: in the Hermes card's
+"Send to Hermes" section either paste Hermes' existing `whsec_…` secret ("Use this secret") or
+press "Generate secret" and put the shown value into Hermes' `.env`. Do not put the secret in
+`config.yaml`; a route-level secret overrides the global one. The route itself:
 
 ```yaml
 platforms:
@@ -155,28 +156,30 @@ platforms:
       port: 8644
       routes:
         adbuilder:
-          secret: "<the generated WEBHOOK_SECRET>"
           prompt: |
             {prompt}
 
             AdBuilder campaign ID: {campaignId}
           toolsets: ["terminal", "file", "web"]   # add the toolset that holds your Meta Ads tools
-          deliver: "telegram"                     # telegram, discord, slack, … ("log" only writes to the gateway log)
+          deliver: "log"                          # each request becomes a new chat in the Hermes dashboard
 ```
 
-Restart the Hermes gateway, expose its port publicly (for example `ngrok http 8644`), enter
-`https://<tunnel>/webhooks/adbuilder` as the webhook URL, Save, and Test connection. A webhook
-run never appears as a chat session in Hermes: the agent's reply is sent to the route's
-`deliver` target, so set that to the platform you talk to Hermes on. Webhook runs default to a
-read-only toolset; `toolsets` must include whatever Hermes needs to create Meta campaigns.
+Restart the Hermes gateway, enter the public address of the Hermes server ending in
+`/webhooks/adbuilder` as the webhook URL, Save, and Test connection. Hermes answers `202` once it
+has accepted the request; the run then appears as a new chat in the Hermes dashboard (source:
+webhook). Webhook runs default to a read-only toolset; `toolsets` must include whatever Hermes
+needs to create Meta campaigns and to call back into AdBuilder.
 
-Requests are signed with HMAC SHA-256 over the exact body, in both forms Hermes accepts:
-`X-Hub-Signature-256: sha256=…` (GitHub style) and `X-Webhook-Signature-V2` over
-`<timestamp>.<body>` with `X-Webhook-Timestamp`. Each request carries a unique `X-Request-ID`
-(and `X-GitHub-Delivery`) so a retry never starts a second run, plus `X-GitHub-Event` /
-`X-Event-Type` and a body field `event_type` (`adbuilder.test` or `adbuilder.campaign.launch`)
-for the route's `events` filter. Bearer and X-API-Key modes remain for receivers that expect a
-plain key. Launch sends one `POST` with:
+Requests are signed the Svix way: the body is serialized once, a unique `svix-id` (`msg_…`) and
+`svix-timestamp` (Unix seconds) are sent, and `svix-signature: v1,<base64>` is the HMAC-SHA256
+over `<svix-id>.<svix-timestamp>.<body>` keyed with the base64-decoded secret (the part after
+`whsec_`). Hermes keys idempotency and the dashboard session on `svix-id`, so every new request
+gets a new id. Every body carries `prompt` and `campaignId` (the route template uses both) plus
+`event_type` (`adbuilder.test`, `adbuilder.campaign.launch`, `adbuilder.stats.refresh`,
+`adbuilder.campaigns.sync`, `adbuilder.accounts.sync`). Failed deliveries are logged server-side
+with status, response, `svix-id`, time, URL and payload size; the secret and signature are never
+logged. Bearer and X-API-Key modes remain for receivers that expect a plain key. Launch sends one
+`POST` with:
 
 ```json
 { "event_type": "adbuilder.campaign.launch",

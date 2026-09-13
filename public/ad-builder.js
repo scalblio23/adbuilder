@@ -822,7 +822,7 @@
     function drawSecret(fresh) {
       secretBox.innerHTML = '';
       secretBox.appendChild(h('div', { 'class': 'apikey__head' }, [h('span', { 'class': 'apikey__name', text: 'WEBHOOK_SECRET' }), h('span', { 'class': 'badge ' + (cfg.webhookSecretSet ? 'badge--ready' : 'badge--draft'), text: cfg.webhookSecretSet ? 'Set' : 'Not set' })]));
-      var value = h('div', { 'class': 'apikey__value' + (fresh ? ' is-fresh' : ''), text: fresh || (cfg.webhookSecretSet ? cfg.webhookSecretMasked : 'No secret yet. Generate one and paste it into Hermes as WEBHOOK_SECRET.') });
+      var value = h('div', { 'class': 'apikey__value' + (fresh ? ' is-fresh' : ''), text: fresh || (cfg.webhookSecretSet ? cfg.webhookSecretMasked : 'No secret yet. Paste the WEBHOOK_SECRET from Hermes\' .env below, or generate one here and put it in Hermes.') });
       var actions = h('div', { 'class': 'btn-row' });
       if (fresh) actions.appendChild(smallBtn('Copy', 'btn--primary', function (e) {
         var done = function () { e.target.textContent = 'Copied'; setTimeout(function () { e.target.textContent = 'Copy'; }, 1500); };
@@ -837,13 +837,21 @@
         request('DELETE', '/api/settings/webhook-secret').then(function (c) { cfg = c; fill(); drawSecret(); }, function (err) { setStatus('error', err.message); });
       }));
       secretBox.appendChild(h('div', { 'class': 'apikey__row' }, [value, actions]));
-      if (fresh) secretBox.appendChild(h('div', { 'class': 'field__hint', text: 'Shown once. Put it in the Hermes route below (config.yaml), then restart Hermes.' }));
+      if (fresh) secretBox.appendChild(h('div', { 'class': 'field__hint', text: 'Shown once. Set WEBHOOK_SECRET to this value in Hermes\' .env (not in config.yaml), then restart the Hermes gateway.' }));
+      var pasteInput = h('input', { 'class': 'table__input', type: 'password', autocomplete: 'off', placeholder: 'whsec_… (the WEBHOOK_SECRET already in Hermes\' .env)' });
+      var pasteBtn = smallBtn('Use this secret', '', function () {
+        var v = pasteInput.value.trim();
+        if (!/^whsec_/.test(v)) { setStatus('error', 'A Hermes webhook secret starts with whsec_.'); return; }
+        request('PUT', '/api/settings', { webhookSecret: v }).then(function (c) { cfg = c; pasteInput.value = ''; fill(); setStatus('ok', 'Secret saved. Press Test connection.'); }, function (err) { setStatus('error', 'Could not save: ' + err.message); });
+      });
+      secretBox.appendChild(h('div', { 'class': 'apikey__paste' }, [pasteInput, pasteBtn]));
+      secretBox.appendChild(h('div', { 'class': 'field__hint', text: 'Both sides must hold the same value: requests are signed the Svix way (svix-id, svix-timestamp, svix-signature) and Hermes checks them against its WEBHOOK_SECRET.' }));
       drawRoute(fresh);
     }
-    // The route Hermes needs so a Launch starts an agent run. Webhook runs never appear as chat sessions:
-    // the agent's reply goes to the route's "deliver" target, so that must be the platform Hermes is chatted on.
+    // The route Hermes needs so a Launch starts an agent run. With deliver: log each accepted request
+    // becomes a new chat in the Hermes dashboard.
     var routeBox = h('div', {});
-    function routeYaml(secret) {
+    function routeYaml() {
       return [
         'platforms:',
         '  webhook:',
@@ -852,23 +860,23 @@
         '      port: 8644',
         '      routes:',
         '        adbuilder:',
-        '          secret: "' + (secret || (cfg.webhookSecretSet ? '<the WEBHOOK_SECRET generated above>' : '<generate the WEBHOOK_SECRET above first>')) + '"',
         '          prompt: |',
         '            {prompt}',
         '',
         '            AdBuilder campaign ID: {campaignId}',
         '          toolsets: ["terminal", "file", "web"]   # add the toolset that holds your Meta Ads tools',
-        '          deliver: "telegram"                     # where Hermes\' reply appears: telegram, discord, slack, … ("log" only writes to the gateway log)'
+        '          deliver: "log"                          # each request becomes a new chat in the Hermes dashboard; nothing is posted to Slack',
+        '# No secret here: the route uses WEBHOOK_SECRET from Hermes\' .env, which must equal the secret above.'
       ].join('\n');
     }
     function drawRoute(fresh) {
       routeBox.innerHTML = '';
-      var yaml = routeYaml(fresh);
+      var yaml = routeYaml();
       var copy = smallBtn('Copy route', '', function (e) {
         var done = function () { e.target.textContent = 'Copied'; setTimeout(function () { e.target.textContent = 'Copy route'; }, 1500); };
         if (navigator.clipboard) navigator.clipboard.writeText(yaml).then(done, function () { prompt('Hermes route', yaml); }); else prompt('Hermes route', yaml);
       });
-      routeBox.appendChild(h('div', { 'class': 'step__sub', text: 'Hermes route (add to the config.yaml Hermes runs with, then restart the gateway). Launch then POSTs to https://<your-hermes-host>/webhooks/adbuilder and Hermes runs the brief as an agent task.', style: 'margin: 14px 0 6px' }));
+      routeBox.appendChild(h('div', { 'class': 'step__sub', text: 'Hermes route (in the config.yaml Hermes runs with; restart the gateway after changes). Each Launch, Refresh or Pull campaigns POSTs to https://<your-hermes-host>/webhooks/adbuilder; Hermes answers 202 and runs it as a new chat in its dashboard.', style: 'margin: 14px 0 6px' }));
       routeBox.appendChild(h('div', { 'class': 'reply' }, [h('pre', { text: yaml }), h('div', { 'class': 'btn-row', style: 'margin-top: 8px' }, [copy])]));
     }
     var keyField = field('API key (only for Bearer / X-API-Key modes)', key);
@@ -981,7 +989,7 @@
     var advanced = h('details', { 'class': 'advanced' }, [
       h('summary', { text: 'Send to Hermes: webhook settings (Launch button, Refresh from Hermes)' }),
       status,
-      h('p', { 'class': 'muted', text: 'Hermes receives webhooks on its WEBHOOK_PORT (8644) and checks each request against the route secret. Enter the public address of the Hermes server, ending in /webhooks/adbuilder.', style: 'margin: 0 0 12px' }),
+      h('p', { 'class': 'muted', text: 'Hermes receives webhooks on its WEBHOOK_PORT (8644) and checks each request against its WEBHOOK_SECRET. Enter the public address of the Hermes server, ending in /webhooks/adbuilder. Hermes answers 202 when it has accepted a request; the run then appears as a new chat in the Hermes dashboard.', style: 'margin: 0 0 12px' }),
       secretBox,
       routeBox,
       h('div', { 'class': 'btn-row', style: 'margin: 12px 0' }, [preset]),
