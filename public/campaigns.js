@@ -294,6 +294,18 @@
       syncAll();
     }
 
+    // What Hermes has and has not done, so a silent wait explains itself.
+    function diagnostics() {
+      var d = data, lines = [];
+      var req = d.lastCatalogRequest;
+      if (req) lines.push('Last request to Hermes: ' + when(req.at) + ', HTTP ' + req.status + (req.reply && req.reply.status ? ', reply "' + req.reply.status + (req.reply.reason ? ' (' + req.reply.reason + ')' : '') + '"' : '') + (req.reply && req.reply.target ? ', reply goes to ' + req.reply.target : '') + '.');
+      if (!d.hermesKeySet) lines.push('No ADBUILDER_API_KEY has been generated, so Hermes cannot send anything back. Generate one in the Hermes card on Ad Builder and give it to Hermes.');
+      else if (!d.hermesLastSeenAt) lines.push('Hermes has never called this app with the ADBUILDER_API_KEY. Until it does, nothing can arrive here. Check its reply in Slack: it may be missing the key or a tool to make HTTP requests.');
+      else lines.push('Hermes last called this app ' + when(d.hermesLastSeenAt) + '.');
+      if (req && req.reply && req.reply.status === 'ignored') lines.push('Hermes ignored the request' + (req.reply.reason === 'event' ? ': the route\'s events list does not include this event. Remove the events line from config.yaml and restart the gateway.' : ' (' + (req.reply.reason || 'no reason') + ').'));
+      return h('div', { 'class': 'diag' }, lines.map(function (t) { return h('div', { text: t }); }));
+    }
+
     // Step 2: campaigns of the chosen accounts, tick to show on the dashboard
     function drawCampaigns() {
       var selectedAccounts = Object.keys(chosenAccounts).filter(function (k) { return chosenAccounts[k]; });
@@ -329,7 +341,10 @@
             list.appendChild(item);
           });
         });
-        if (!list.children.length) list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
+        if (!list.children.length) {
+          list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
+          if (waiting || !catalog.length) list.appendChild(diagnostics());
+        }
         countEl.textContent = selectedCount() + ' on dashboard';
       }
       search.addEventListener('input', drawList);
