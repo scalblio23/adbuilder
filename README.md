@@ -107,6 +107,32 @@ The key stays on the server. Usage is billed per request to your OpenAI account.
 The rules that decide what the AI reads and writes (for example, headlines derive from the
 primary text already typed) are listed in `AI_RULES.md` and inside the AI settings card.
 
+## Campaigns tab (live numbers)
+
+The Campaigns tab shows hand-picked Meta campaigns: metric cards at the top (revenue, profit,
+Facebook stats, revenue vs cost, leads) and one row per campaign underneath. Only the campaigns
+chosen there are ever pulled from Meta, to stay well inside the API rate limits.
+
+1. **Choose campaigns**: tick campaigns from the list Hermes synced (`PUT /api/v1/meta` with
+   `{ campaigns: [{ id, name, adAccountId, adAccountName, status, objective }] }`) or add one by ID.
+2. **Scheduled pulls**: `vercel.json` runs `/api/cron/stats` at 8:00 and 15:00 Adelaide time
+   (daylight-saving times, 21:30 and 04:30 UTC; in winter they land at 7:00 and 14:00). Set
+   `CRON_SECRET` in the Vercel project (any long random string) or the cron is refused.
+3. **Refresh**: sends the same request on demand, at most once a minute.
+
+Both send one `adbuilder.stats.refresh` webhook to Hermes (through the route above) listing only
+the tracked campaigns and asking for a 60-day daily breakdown. Hermes pulls the insights and pushes
+them back with the access token:
+
+```
+PUT /api/v1/campaign-stats
+{ "items": [ { "campaignId": "1202…", "name": "…", "status": "ACTIVE", "currency": "AUD",
+               "daily": [ { "date": "2026-09-13", "spend": 0, "impressions": 0, "reach": 0, "clicks": 0, "leads": 0, "purchases": 0, "revenue": 0 } ] } ] }
+```
+
+`GET /api/v1/campaign-stats` returns the tracked list, so Hermes can also pull on its own schedule.
+Campaigns that are not tracked are ignored. The page polls for the new numbers after a refresh.
+
 ## Hermes agent
 
 The Hermes section at the bottom of the Ad Builder page handles both directions.
@@ -126,7 +152,7 @@ platforms:
       routes:
         adbuilder:
           secret: "<the generated WEBHOOK_SECRET>"
-          events: ["adbuilder.campaign.launch", "adbuilder.test"]
+          events: ["adbuilder.campaign.launch", "adbuilder.stats.refresh", "adbuilder.test"]
           prompt: |
             {prompt}
 

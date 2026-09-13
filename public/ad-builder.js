@@ -853,7 +853,7 @@
         '      routes:',
         '        adbuilder:',
         '          secret: "' + (secret || (cfg.webhookSecretSet ? '<the WEBHOOK_SECRET generated above>' : '<generate the WEBHOOK_SECRET above first>')) + '"',
-        '          events: ["adbuilder.campaign.launch", "adbuilder.test"]',
+        '          events: ["adbuilder.campaign.launch", "adbuilder.stats.refresh", "adbuilder.test"]',
         '          prompt: |',
         '            {prompt}',
         '',

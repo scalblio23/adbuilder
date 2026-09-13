@@ -594,3 +594,60 @@ select.table__input { -webkit-appearance: none; appearance: none; padding-right:
 .picker__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .picker__text span { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker__state { font-size: 12px; color: var(--accent); white-space: nowrap; }
+
+/* Campaigns tab: performance cards + campaign rows */
+.perf-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.perf-toolbar .muted { font-size: 12px; }
+.perf-page .notice { margin-bottom: 12px; }
+.perf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "rev fb rc" "tot fb leads"; gap: 14px; margin-bottom: 20px; }
+.perf--revenue { grid-area: rev; } .perf--fb { grid-area: fb; } .perf--rc { grid-area: rc; } .perf--totals { grid-area: tot; } .perf--leads { grid-area: leads; }
+.perf { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; }
+.perf__head { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+.perf__icon { width: 24px; height: 24px; border-radius: 50%; background: #3b3b3b; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.perf--fb .perf__icon, .perf--rc .perf__icon { background: #1877f2; font-family: Georgia, serif; }
+.perf__block { background: #232323; border-radius: 10px; padding: 12px 14px; }
+.perf__hero { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.perf__value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.perf__sub { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+.perf__label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.perf__big .perf__value { font-size: 30px; }
+.perf__delta { font-size: 13px; font-weight: 600; }
+.perf__delta.is-up { color: var(--success); } .perf__delta.is-down { color: var(--danger); }
+.perf__grid { display: grid; grid-template-columns: 1fr 1fr; }
+.perf__cell { padding: 8px 10px; border-bottom: 1px solid #333; }
+.perf__cell:nth-child(odd) { border-right: 1px solid #333; }
+.perf__cell:nth-last-child(-n+2) { border-bottom: 0; }
+.perf__num { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.is-pos { color: var(--success); } .is-neg { color: var(--danger); }
+.perf__nodaily { padding: 20px 4px; font-size: 13px; }
+.chart__wrap { position: relative; padding-top: 4px; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; }
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart__grid { stroke: #383838; stroke-width: 1; stroke-dasharray: 2 4; }
+.chart__tick { fill: #8a8a8a; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; }
+.chart__cross { stroke: #777; stroke-width: 1; stroke-dasharray: 3 3; }
+.chart__tip { position: absolute; top: 6px; background: #161616; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; pointer-events: none; min-width: 120px; z-index: 2; }
+.chart__tipdate { color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
+.chart__tiprow { display: flex; align-items: center; gap: 6px; } .chart__tiprow b { margin-left: auto; }
+.chart__swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.chart__legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 2px 0; }
+.chart__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.crow-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; margin: 0 4px 8px; }
+.crow { display: grid; grid-template-columns: minmax(190px, 1fr) minmax(0, 3.4fr) 140px 32px; align-items: center; gap: 16px; padding: 12px 14px; margin-bottom: 10px; border-radius: 12px; }
+.crow__name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow__meta { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12px; margin-top: 4px; flex-wrap: wrap; }
+.crow__cid { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.crow__metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.crow__metric { background: #232323; border-radius: 8px; padding: 6px 8px; min-width: 0; }
+.crow__num { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow__label { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.crow__spark .spark { width: 100%; height: 32px; display: block; }
+.crow__remove { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 16px; cursor: pointer; }
+.crow__remove:hover { background: rgba(229, 83, 75, 0.15); color: var(--danger); border-color: var(--danger); }
+.perf-empty { padding: 28px; text-align: center; } .perf-empty h3 { margin: 0 0 8px; } .perf-empty p { max-width: 640px; margin: 0 auto 8px; }
+.picker__group { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 2px; }
+.picker__item input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; }
+.picker__manual { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-top: 10px; }
+.picker__foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.picker .table__input { margin-bottom: 8px; }
+@media (max-width: 1100px) { .perf-grid { grid-template-columns: 1fr 1fr; grid-template-areas: "rev fb" "tot fb" "rc leads"; } .crow { grid-template-columns: 1fr; } .crow__metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } .crow__remove { justify-self: end; } }
+@media (max-width: 640px) { .perf-grid { grid-template-columns: 1fr; grid-template-areas: "rev" "fb" "rc" "tot" "leads"; } .crow__metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .picker__manual { grid-template-columns: 1fr; } }
