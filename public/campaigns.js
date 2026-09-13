@@ -273,10 +273,10 @@
         waiting = true; syncAll();
         request('POST', '/api/tracked/sync', { accounts: ids }).then(function (r) {
           requestedAt = r.sync.at; step = 2; draw();
-          say('ok', 'Hermes accepted the request (HTTP ' + r.sync.status + '). Campaigns appear below as it sends them; checking every 10 seconds.');
+          say('ok', 'Hermes accepted the request and started a run. Campaigns appear below as it sends them (usually within a minute or two); checking every 10 seconds.');
           waitFor(function (o) { return o.catalog.syncedAt && o.catalog.syncedAt > requestedAt; },
             function () { waiting = false; if (step === 2) { draw(); say('ok', 'Campaign list updated ' + when(data.catalog.syncedAt) + '.'); } },
-            function () { waiting = false; if (step === 2) { draw(); say('', 'Nothing from Hermes yet. The list below is what was synced before; it updates when Hermes sends more.'); } }, 10000, 30);
+            function () { waiting = false; if (step === 2) { draw(); say('error', 'Hermes has not sent any campaigns after 5 minutes. Check its reply in Slack and the gateway log: it needs the ADBUILDER_API_KEY and a toolset that can call Meta and make HTTP requests.'); } }, 10000, 30);
         }, function (err) { waiting = false; syncAll(); say('error', err.message); });
       } }, ['Pull campaigns']);
       var fetchAccounts = h('button', { 'class': 'btn', type: 'button', onclick: function () {

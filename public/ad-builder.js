@@ -910,7 +910,7 @@
         .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, status: res.status, body: j }; }); })
         .then(function (res) {
           out.innerHTML = '';
-          if (res.ok) out.appendChild(replyBox(res.body.ok ? 'Hermes replied' : 'Hermes replied with an error', res.body));
+          if (res.ok) out.appendChild(replyBox(res.body.warning ? 'Hermes received it but did nothing' : res.body.ok ? 'Hermes replied' : 'Hermes replied with an error', res.body.warning ? Object.assign({ error: res.body.warning }, res.body) : res.body));
           else out.appendChild(replyBox('Test failed', { error: res.body.error || ('Server returned ' + res.status) }));
         }, function (err) { out.innerHTML = ''; out.appendChild(replyBox('Test failed', { error: err.message })); })
         .then(function () { testBtn.disabled = false; });
