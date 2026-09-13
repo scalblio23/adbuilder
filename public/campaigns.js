@@ -193,10 +193,12 @@
   }
   function delta(cur, prev, key) { if (!prev || !prev[key]) return null; return (cur[key] - prev[key]) / Math.abs(prev[key]); }
   var LABELS = { lead: 'Leads', schedule: 'Schedules', purchase: 'Purchases', contact: 'Contacts', complete_registration: 'Registrations', submit_application: 'Applications', start_trial: 'Trials', subscribe: 'Subscriptions', add_to_cart: 'Adds to cart', initiate_checkout: 'Checkouts', add_payment_info: 'Payment info', search: 'Searches', view_content: 'Content views', find_location: 'Location finds', customize_product: 'Customisations', donate: 'Donations', link_click: 'Link clicks', landing_page_view: 'Landing page views', messaging: 'Conversations', thruplay: 'ThruPlays', app_install: 'App installs', post_engagement: 'Engagements', reach: 'Reach', impressions: 'Impressions' };
-  function labelFor(key) { return LABELS[key] || (key ? key.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Results'); }
+  function labelFor(key, extra) { return (extra && extra[key]) || LABELS[key] || (key ? key.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }) : 'Results'); }
   // The result key a campaign uses: its manual override, else what its ad sets optimise for.
   function resultKeyOf(t) { return t.resultOverride || (t.stats && t.stats.resultKey) || ''; }
-  function campaignResultLabel(t) { var k = resultKeyOf(t); return k ? labelFor(k) : (t.stats && t.stats.resultType) || 'Results'; }
+  function campaignResultLabel(t) { var k = resultKeyOf(t); return k ? labelFor(k, t.stats && t.stats.convLabels) : (t.stats && t.stats.resultType) || 'Results'; }
+  // Old pulls have no per-day conversion breakdown; a result-type change then needs a fresh pull.
+  function hasConv(t) { return ((t.stats && t.stats.daily) || []).some(function (d) { return d.conv; }); }
   // Daily rows with "results" recomputed for the chosen key (from the conversions each row carries).
   function withResults(rows, key) {
     if (!key) return rows || [];
@@ -376,14 +378,20 @@
     var none = !st;
     var rlabel = campaignResultLabel(t);
     // Result type: auto (what the ad sets optimise for) or a manual choice from the conversions seen.
-    var seen = {}; ((st && st.daily) || []).forEach(function (d) { Object.keys(d.conv || {}).forEach(function (k) { seen[k] = true; }); });
-    ['lead', 'schedule', 'purchase', 'contact', 'complete_registration', 'link_click', 'landing_page_view', 'messaging', 'reach'].forEach(function (k) { seen[k] = true; });
+    var totals = {}; ((st && st.daily) || []).forEach(function (d) { Object.keys(d.conv || {}).forEach(function (k) { totals[k] = (totals[k] || 0) + d.conv[k]; }); });
+    ['lead', 'schedule', 'purchase', 'contact', 'complete_registration', 'link_click', 'landing_page_view', 'messaging', 'reach'].forEach(function (k) { if (totals[k] == null) totals[k] = 0; });
     var opt = (st && st.optimisation && st.optimisation[0]) || null;
-    var autoText = 'Auto: ' + ((st && st.resultType) || 'Results') + (opt ? ' (' + (opt.event ? opt.event.toLowerCase().replace(/_/g, ' ') + ' event' : opt.goal.toLowerCase().replace(/_/g, ' ')) + ')' : '');
-    var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(Object.keys(seen).sort().map(function (k) { return h('option', { value: k, text: labelFor(k) }); })));
+    var optText = opt ? (opt.customConversionId ? 'custom conversion' : opt.event ? opt.event.toLowerCase().replace(/_/g, ' ') + ' event' : opt.goal.toLowerCase().replace(/_/g, ' ')) : '';
+    var autoText = 'Auto: ' + ((st && st.resultType) || 'Results') + (optText ? ' (' + optText + ')' : '');
+    var keys = Object.keys(totals).sort(function (a, b) { return (totals[b] || 0) - (totals[a] || 0) || a.localeCompare(b); });
+    var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(keys.map(function (k) { return h('option', { value: k, text: labelFor(k, st && st.convLabels) + (k === 'reach' ? '' : ' · ' + count(totals[k]) + ' in stored days') }); })));
     resultSel.value = t.resultOverride || '';
     resultSel.addEventListener('change', function () {
-      request('PUT', '/api/tracked/' + t.id, { resultOverride: resultSel.value }).then(function (o) { apply(o); }, function (err) { setNotice('error', err.message); });
+      var chosen = resultSel.value;
+      request('PUT', '/api/tracked/' + t.id, { resultOverride: chosen }).then(function (o) {
+        apply(o);
+        if (chosen && !hasConv(t)) { setNotice('', 'The stored numbers predate the conversion breakdown. Pulling fresh data from Meta so ' + labelFor(chosen) + ' can be counted…'); doRefresh(); }
+      }, function (err) { setNotice('error', err.message); });
     });
     var ads = ((st && st.ads) || []).slice().map(function (ad) { return { ad: ad, spend: inRange(ad.daily, r.since, r.until).reduce(function (n, d) { return n + (d.spend || 0); }, 0) }; })
       .sort(function (a, b) { return b.spend - a.spend; }).map(function (x) { return x.ad; });
