@@ -305,18 +305,25 @@
 
   function syncedLabel(kind) {
     var at = meta[kind].syncedAt;
-    return at ? 'Synced from Hermes ' + new Date(at).toLocaleString() : 'Not synced yet. Hermes sends this list with its access token.';
+    return at ? 'Synced ' + new Date(at).toLocaleString() : 'Not synced yet. Click "Fetch pages & pixels" in the Hermes card below.';
   }
   // Re-read what Hermes has sent (and pull from Hermes too, if the Advanced connection is set up),
   // then redraw the dropdowns in place. Resolves with a one-line summary.
+  // Pull the catalog straight from Meta with the stored token; with no token, fall back to what Hermes
+  // has sent (pulling from Hermes too, if the Advanced connection is set up). Redraws the dropdowns
+  // in place. Resolves with a one-line summary.
   function fetchMeta() {
-    return fetch('/api/hermes/meta', { method: 'POST' }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }, function () { return { ok: false, status: 0, body: {} }; })
-      .then(function (pull) {
+    var call = function (url) { return fetch(url, { method: 'POST' }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }, function () { return { ok: false, status: r.status, body: {} }; }); }, function () { return { ok: false, status: 0, body: {} }; }); };
+    return call('/api/meta/sync').then(function (direct) {
+      if (direct.ok || direct.status !== 501) return { via: 'meta', res: direct };
+      return call('/api/hermes/meta').then(function (pull) { return { via: 'hermes', res: pull }; });
+    }).then(function (r) {
+        var pull = r.res;
         return Promise.all([
           request('GET', '/api/meta'),
           request('GET', '/api/ad-accounts').then(function (l) { accounts = l || []; }, function () {})
-        ]).then(function (r) {
-          meta = r[0] || meta;
+        ]).then(function (rr) {
+          meta = rr[0] || meta;
           if (camp) {
             var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5());
             var s9 = root.querySelector('#step-9'); if (s9) s9.replaceWith(step9());
@@ -324,9 +331,14 @@
           var n = function (k) { return meta[k].items.length; };
           var when = [meta.adAccounts.syncedAt, meta.pixels.syncedAt, meta.pages.syncedAt].filter(Boolean).sort().pop();
           var summary = n('adAccounts') + ' ad account' + (n('adAccounts') === 1 ? '' : 's') + ', ' + n('pixels') + ' pixel' + (n('pixels') === 1 ? '' : 's') + ', ' + n('pages') + ' page' + (n('pages') === 1 ? '' : 's');
+          if (r.via === 'meta' && pull.ok) {
+            var warn = (pull.body.warnings || []).length ? ' Skipped: ' + pull.body.warnings.join('; ') + '.' : '';
+            return 'Pulled from Meta: ' + summary + '.' + (n('pages') ? '' : ' No Pages came back: the token needs pages_show_list (or the System User needs the Pages assigned in Business Settings).') + warn;
+          }
+          if (r.via === 'meta') return 'Meta sync failed (' + (pull.body.error || 'HTTP ' + pull.status) + '). Showing the stored list: ' + summary + '.';
           if (pull.ok) return 'Pulled from Hermes: ' + summary + '.';
-          if (!when) return 'Nothing from Hermes yet. Ask Hermes to send the Meta data, then fetch again.';
-          return 'Fetched: ' + summary + ' (Hermes sent this ' + new Date(when).toLocaleString() + ').';
+          if (!when) return 'Nothing synced yet. Paste a Meta token in the Campaigns tab (Meta connection) and fetch again.';
+          return 'Fetched: ' + summary + ' (synced ' + new Date(when).toLocaleString() + ').';
         });
       });
   }
@@ -334,7 +346,7 @@
   function refreshButton() {
     var out = h('span', { 'class': 'field__hint', text: refreshMsg });
     refreshMsg = '';
-    var b = smallBtn('Fetch from Hermes', '', function () {
+    var b = smallBtn('Fetch pages & pixels', '', function () {
       b.disabled = true; out.textContent = 'Fetching…';
       fetchMeta().then(function (msg) { refreshMsg = msg; var s5 = root.querySelector('#step-5'); if (s5) s5.replaceWith(step5()); }, function (err) { out.textContent = 'Fetch failed: ' + err.message; b.disabled = false; });
     });
@@ -352,7 +364,7 @@
     } });
     sel.appendChild(h('option', { value: '', text: 'Choose an ad account…' }));
     if (meta.adAccounts.items.length) {
-      var g1 = h('optgroup', { label: 'Meta ad accounts (from Hermes)' });
+      var g1 = h('optgroup', { label: 'Meta ad accounts' });
       meta.adAccounts.items.forEach(function (a) { g1.appendChild(h('option', { value: 'meta:' + a.id, text: a.name + ' — ' + a.id + (a.currency ? ' · ' + a.currency : '') })); });
       sel.appendChild(g1);
     }
@@ -375,8 +387,8 @@
     if (d.page && d.page.id && !meta.pages.items.some(function (p) { return p.id === d.page.id; })) { var keepP = h('option', { value: d.page.id, text: (d.page.name || d.page.id) + ' (no longer in the synced list)' }); pageSel.appendChild(keepP); pageSel.value = d.page.id; }
 
     return step(5, 'Account selection', 'Which ad account and Facebook Page this campaign runs from.', [
-      field('Ad account', sel, meta.adAccounts.items.length ? syncedLabel('adAccounts') : 'No Meta accounts synced yet. ' + (accounts.length ? 'Showing the Ad Accounts tab.' : 'Add accounts in the Ad Accounts tab or sync from Hermes.')),
-      field('Facebook Page', pageSel, meta.pages.items.length ? syncedLabel('pages') : 'No pages synced yet. Hermes sends the pages the Meta token can access.'),
+      field('Ad account', sel, meta.adAccounts.items.length ? syncedLabel('adAccounts') : 'No Meta accounts synced yet. ' + (accounts.length ? 'Showing the Ad Accounts tab.' : 'Add accounts in the Ad Accounts tab or click "Fetch pages & pixels".')),
+      field('Facebook Page', pageSel, meta.pages.items.length ? syncedLabel('pages') : 'No pages synced yet. Click "Fetch pages & pixels" below (uses the Meta token from the Campaigns tab).'),
       refreshButton()
     ]);
   }
@@ -727,7 +739,7 @@
     syncPixel();
     return step(9, 'Landing page builder', 'Used when the destination is a landing page.', [
       h('div', { 'class': 'field-row' }, [
-        field('Pixel / dataset', pixelSel, meta.pixels.items.length ? syncedLabel('pixels') : 'No pixels synced yet. Choose "Enter an ID manually" or sync from Hermes.'),
+        field('Pixel / dataset', pixelSel, meta.pixels.items.length ? syncedLabel('pixels') : 'No pixels synced yet. Click "Fetch pages & pixels" in the Hermes card, or choose "Enter an ID manually".'),
         field('Conversion objective', select(OBJECTIVES, lp.objective, function (v) { lp.objective = v; })),
         field('Conversion event', ev)
       ]),
@@ -931,7 +943,7 @@
     var keyOut = h('div', {});
     var seen = h('div', { 'class': 'notice' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: 'Checking…' }), smallBtn('Check again', '', function () { loadSeen(); })]);
     var fetchOut = h('span', { 'class': 'field__hint' });
-    var fetchBtn = btn('Fetch from Hermes', 'btn--primary', function () {
+    var fetchBtn = btn('Fetch pages & pixels from Meta', 'btn--primary', function () {
       fetchBtn.disabled = true; fetchOut.textContent = 'Fetching…';
       fetchMeta().then(function (msg) { fetchOut.textContent = msg; }, function (err) { fetchOut.textContent = 'Fetch failed: ' + err.message; }).then(function () { fetchBtn.disabled = false; });
     });
@@ -1004,7 +1016,7 @@
     return h('div', { 'class': 'card step hermes', id: 'hermesCard' }, [
       h('div', { 'class': 'step__head' }, [h('span', { 'class': 'step__num', text: 'H' }), h('div', {}, [h('h2', { 'class': 'step__title', text: 'Hermes access token' }), h('div', { 'class': 'step__sub', text: 'Generate a token, paste it into Hermes. Hermes then pulls campaigns, prompts, and assets from here and reports launch status back.' })])]),
       keyBox, keyOut, seen,
-      h('p', { 'class': 'muted', text: 'After Hermes sends ad accounts, pixels, and pages, fetch them here. The dropdowns in steps 5 and 9 update without reloading the page.', style: 'margin: 16px 0 0' }),
+      h('p', { 'class': 'muted', text: 'Fetch ad accounts, Pages and pixels here. With a Meta token saved in the Campaigns tab this pulls straight from Meta; otherwise it uses what Hermes sent. The dropdowns in steps 5 and 9 update without reloading the page.', style: 'margin: 16px 0 0' }),
       fetchRow, endpoints,
       advanced
     ]);

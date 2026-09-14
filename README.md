@@ -121,6 +121,12 @@ its card (for example to Schedules) without pulling again; reach-optimised campa
 left out of the combined result total. With no token the page falls back to asking Hermes, as
 described below.
 
+**Ad Builder dropdowns.** "Fetch pages & pixels from Meta" in the Ad Builder's Hermes card
+(`POST /api/meta/sync`) pulls ad accounts, Facebook Pages and pixels straight from Meta with the
+same token: Pages come from `/me/accounts`, the businesses' owned and client pages, and each ad
+account's `promote_pages`; pixels from each account's `adspixels`. A source the token cannot read
+is skipped and named in the result. Without a token the button falls back to what Hermes sent.
+
 **Creative downloads.** Best-creative cards and the per-ad rows carry Download buttons for the
 ad's video and full-size image (`GET /api/ads/:id/download?kind=video|image`). The app fetches
 the file from Meta itself, a video's file URL with the access token, and streams it back with a
