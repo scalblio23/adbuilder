@@ -408,6 +408,11 @@
     });
     return out;
   }
+  function shortUrl(u) { try { var x = new URL(u); return (x.host.replace(/^www\./, '') + (x.pathname === '/' ? '' : x.pathname)).slice(0, 48); } catch (e) { return String(u).slice(0, 48); } }
+  function linkLine(ad, cls) {
+    if (!ad.linkUrl) return h('div', { 'class': cls + ' is-none', text: 'No destination link' });
+    return h('a', { 'class': cls, href: ad.linkUrl, target: '_blank', rel: 'noopener', title: ad.linkUrl, text: '↗ ' + shortUrl(ad.linkUrl) });
+  }
   function creativeCard(item, rank) {
     var ad = item.ad, m = item.m;
     var src = ad.imageUrl || ad.thumbnailUrl;
@@ -419,6 +424,7 @@
       frame,
       h('div', { 'class': 'bc__name', title: ad.name, text: ad.name }),
       h('div', { 'class': 'bc__meta', text: item.campaign.name + (ad.adSetName ? ' · ' + ad.adSetName : '') }),
+      linkLine(ad, 'bc__link'),
       h('div', { 'class': 'bc__stats' }, [
         stat(money(m.spend), 'Amount spent'),
         stat(money(m.cpm), 'CPM'),
@@ -470,7 +476,7 @@
     var m = derive(daily.length ? sum(daily) : (ad.daily && ad.daily.length ? {} : ad.metrics || {}));
     var thumb = ad.thumbnailUrl ? h('img', { 'class': 'adrow__thumb', src: ad.thumbnailUrl, alt: '', loading: 'lazy' }) : h('div', { 'class': 'adrow__thumb adrow__thumb--none', text: 'AD' });
     return h('div', { 'class': 'adrow' }, [
-      h('div', { 'class': 'adrow__id' }, [thumb, h('div', { 'class': 'adrow__text' }, [ad.previewUrl ? h('a', { 'class': 'adrow__name', href: ad.previewUrl, target: '_blank', rel: 'noopener', text: ad.name }) : h('div', { 'class': 'adrow__name', text: ad.name }), h('div', { 'class': 'crow__meta' }, [statusBadge(ad.status), h('span', { text: ad.adSetName || '' })])])]),
+      h('div', { 'class': 'adrow__id' }, [thumb, h('div', { 'class': 'adrow__text' }, [ad.previewUrl ? h('a', { 'class': 'adrow__name', href: ad.previewUrl, target: '_blank', rel: 'noopener', text: ad.name }) : h('div', { 'class': 'adrow__name', text: ad.name }), h('div', { 'class': 'crow__meta' }, [statusBadge(ad.status), h('span', { text: ad.adSetName || '' })]), linkLine(ad, 'adrow__link')])]),
       h('div', { 'class': 'crow__metrics crow__metrics--ad' }, metricCells(m, rlabel, false)),
       h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b')])
     ]);
@@ -492,8 +498,35 @@
     ]);
     return det;
   }
-  function isOn(id) { try { return localStorage.getItem('adbuilder.campaignOn.' + id) !== '0'; } catch (e) { return true; } }
-  function setOn(id, on) { try { localStorage.setItem('adbuilder.campaignOn.' + id, on ? '1' : '0'); } catch (e) {} }
+  function flag(key) { try { return localStorage.getItem(key) !== '0'; } catch (e) { return true; } }
+  function setFlag(key, on) { try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {} }
+  function accountKey(t) { return t.adAccountId || 'none'; }
+  function accountOn(t) { return flag('adbuilder.accountOn.' + accountKey(t)); }
+  function campaignOn(id) { return flag('adbuilder.campaignOn.' + id); }
+  function isOn(id) { var t = ((data && data.tracked) || []).filter(function (x) { return x.id === id; })[0]; return t ? accountOn(t) && campaignOn(id) : campaignOn(id); }
+  function setOn(id, on) { setFlag('adbuilder.campaignOn.' + id, on); }
+  // Two rows of pills: one per client (ad account), then one per campaign of the clients that are on.
+  function pillRows(tracked) {
+    var accounts = [], seen = {};
+    tracked.forEach(function (t) { var k = accountKey(t); if (!seen[k]) { seen[k] = true; accounts.push({ key: k, name: t.adAccountName || t.adAccountId || 'No account', campaigns: [] }); } seen[k] && accounts.filter(function (a) { return a.key === k; })[0].campaigns.push(t); });
+    var accRow = h('div', { 'class': 'pills' }, accounts.map(function (a) {
+      var on = flag('adbuilder.accountOn.' + a.key);
+      var onCount = a.campaigns.filter(function (t) { return campaignOn(t.id); }).length;
+      return h('button', { 'class': 'pill' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Switch off ' : 'Switch on ') + a.name, onclick: function () { setFlag('adbuilder.accountOn.' + a.key, !on); render(); } },
+        [h('span', { 'class': 'pill__dot' }), h('span', { text: a.name }), h('span', { 'class': 'pill__count', text: onCount + '/' + a.campaigns.length })]);
+    }));
+    var live = tracked.filter(accountOn);
+    var campRow = h('div', { 'class': 'pills pills--campaigns' }, live.map(function (t) {
+      var on = campaignOn(t.id);
+      return h('button', { 'class': 'pill pill--sm' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Hide ' : 'Show ') + t.name + ' (' + (t.adAccountName || t.adAccountId || '') + ')', onclick: function () { setOn(t.id, !on); render(); } },
+        [h('span', { 'class': 'pill__dot' }), h('span', { text: t.name })]);
+    }));
+    var wrap = h('div', { 'class': 'pillbox' }, [
+      h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Clients' }), accRow]),
+      live.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Campaigns' }), campRow]) : h('p', { 'class': 'muted', text: 'Switch a client on to see its campaigns.' })
+    ]);
+    return wrap;
+  }
   function campaignRow(t, r) {
     var st = t.stats;
     var daily = inRange(withResults(st && st.daily, t.resultOverride), r.since, r.until);
@@ -533,15 +566,12 @@
       toggle.classList.toggle('is-open', open);
     }
     var toggle = h('button', { 'class': 'crow__toggle', type: 'button', onclick: function () { open = !open; try { localStorage.setItem('adbuilder.adsOpen.' + t.id, open ? '1' : '0'); } catch (e) {} drawAds(); } });
-    var onBox = h('input', { type: 'checkbox', checked: isOn(t.id), title: 'Include this campaign in the numbers above' });
-    var onSwitch = h('label', { 'class': 'switch' }, [onBox, h('span', { 'class': 'switch__track' }), h('span', { 'class': 'switch__text', text: isOn(t.id) ? 'On' : 'Off' })]);
-    onBox.addEventListener('change', function () { setOn(t.id, onBox.checked); render(); });
+
     var remove = h('button', { 'class': 'crow__remove', title: 'Stop tracking this campaign', type: 'button', onclick: function () {
       request('DELETE', '/api/tracked/' + t.id).then(function (o) { apply(o); }, function (err) { setNotice('error', err.message); });
     } }, ['×']);
-    var card = h('div', { 'class': 'card crow' + (isOn(t.id) ? '' : ' is-off') }, [
+    var card = h('div', { 'class': 'card crow' }, [
       h('div', { 'class': 'crow__main' }, [
-        onSwitch,
         h('div', { 'class': 'crow__id' }, [
           h('div', { 'class': 'crow__name', text: t.name }),
           h('div', { 'class': 'crow__meta' }, [statusBadge(t.status), h('span', { text: (t.adAccountName || t.adAccountId || '') }), h('span', { 'class': 'crow__cid', text: 'ID ' + t.id })]),
@@ -901,11 +931,13 @@
     var on = d.tracked.filter(function (t) { return isOn(t.id); });
     var sr = series(on, r);
     body.appendChild(h('div', { 'class': 'con__head mono' }, [h('span', { text: 'Campaigns · ' + pad(on.length) + ' / ' + pad(d.tracked.length) + ' on' }), h('span', { text: r.label + ' · ' + (d.source === 'meta' ? 'direct from Meta' : 'via Hermes') + ' · changes vs ' + compareLabel(r) })]));
+    body.appendChild(pillRows(d.tracked));
+    if (!on.length) { body.appendChild(h('div', { 'class': 'card perf-empty' }, [h('h3', { text: 'Nothing switched on' }), h('p', { 'class': 'muted', text: 'Switch on a client and at least one campaign above.' })])); return; }
     body.appendChild(hero(sr, r, on));
     body.appendChild(summaryCards(sr, r, on));
     body.appendChild(bestCreatives(on, r));
-    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: 'Switch a campaign off to leave it out of the numbers above · ' + (d.source === 'meta' ? 'pulled straight from Meta' : d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
-    d.tracked.forEach(function (t) { body.appendChild(campaignRow(t, r)); });
+    body.appendChild(h('div', { 'class': 'crow-head' }, [h('span', { text: 'Campaigns' }), h('span', { 'class': 'muted', text: on.length + ' shown · use the pills above to switch clients and campaigns · ' + (d.source === 'meta' ? 'pulled straight from Meta' : d.pending ? 'waiting for Hermes to send new numbers…' : 'numbers as sent by Hermes') })]));
+    on.forEach(function (t) { body.appendChild(campaignRow(t, r)); });
   }
   function load() { return request('GET', '/api/tracked').then(apply, function (err) { setNotice('error', 'Could not load: ' + err.message); }); }
   var pollTimer = null;
