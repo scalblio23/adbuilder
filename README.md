@@ -121,6 +121,12 @@ its card (for example to Schedules) without pulling again; reach-optimised campa
 left out of the combined result total. With no token the page falls back to asking Hermes, as
 described below.
 
+**Creative downloads.** Best-creative cards and the per-ad rows carry Download buttons for the
+ad's video and full-size image (`GET /api/ads/:id/download?kind=video|image`). The app fetches
+the file from Meta itself, a video's file URL with the access token, and streams it back with a
+download filename, because Meta's CDN does not allow cross-origin downloads from the browser.
+Only files hosted on Meta domains are fetched. Each row also shows the link the ad sends people to.
+
 
 The Campaigns tab shows hand-picked Meta campaigns: metric cards at the top (revenue, profit,
 Facebook stats, revenue vs cost, leads) and one row per campaign underneath. Only the campaigns

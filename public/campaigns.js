@@ -413,6 +413,15 @@
     if (!ad.linkUrl) return h('div', { 'class': cls + ' is-none', text: 'No destination link' });
     return h('a', { 'class': cls, href: ad.linkUrl, target: '_blank', rel: 'noopener', title: ad.linkUrl, text: '↗ ' + shortUrl(ad.linkUrl) });
   }
+  // Download button(s) for an ad's creative: the video when it has one, and the full-size image. Served through
+  // the app (/api/ads/:id/download) because Meta's CDN blocks direct downloads from the browser.
+  function downloadLinks(ad, cls) {
+    var out = [];
+    var mk = function (kind, label) { return h('a', { 'class': 'dl ' + (cls || ''), href: '/api/ads/' + encodeURIComponent(ad.id) + '/download?kind=' + kind, download: '', title: 'Download the ' + kind + ' file' }, [h('span', { 'class': 'dl__icon', text: '\u2913' }), h('span', { text: label })]); };
+    if (ad.videoId) out.push(mk('video', 'Video'));
+    if (ad.imageUrl) out.push(mk('image', ad.videoId ? 'Poster' : 'Image'));
+    return out;
+  }
   function creativeCard(item, rank) {
     var ad = item.ad, m = item.m;
     var src = ad.imageUrl || ad.thumbnailUrl;
@@ -425,6 +434,7 @@
       h('div', { 'class': 'bc__name', title: ad.name, text: ad.name }),
       h('div', { 'class': 'bc__meta', text: item.campaign.name + (ad.adSetName ? ' · ' + ad.adSetName : '') }),
       linkLine(ad, 'bc__link'),
+      h('div', { 'class': 'bc__tools' }, downloadLinks(ad).concat(ad.previewUrl ? [h('a', { 'class': 'dl dl--ghost', href: ad.previewUrl, target: '_blank', rel: 'noopener' }, ['Open in Meta'])] : [])),
       h('div', { 'class': 'bc__stats' }, [
         stat(money(m.spend), 'Amount spent'),
         stat(money(m.cpm), 'CPM'),
@@ -476,7 +486,7 @@
     var m = derive(daily.length ? sum(daily) : (ad.daily && ad.daily.length ? {} : ad.metrics || {}));
     var thumb = ad.thumbnailUrl ? h('img', { 'class': 'adrow__thumb', src: ad.thumbnailUrl, alt: '', loading: 'lazy' }) : h('div', { 'class': 'adrow__thumb adrow__thumb--none', text: 'AD' });
     return h('div', { 'class': 'adrow' }, [
-      h('div', { 'class': 'adrow__id' }, [thumb, h('div', { 'class': 'adrow__text' }, [ad.previewUrl ? h('a', { 'class': 'adrow__name', href: ad.previewUrl, target: '_blank', rel: 'noopener', text: ad.name }) : h('div', { 'class': 'adrow__name', text: ad.name }), h('div', { 'class': 'crow__meta' }, [statusBadge(ad.status), h('span', { text: ad.adSetName || '' })]), linkLine(ad, 'adrow__link')])]),
+      h('div', { 'class': 'adrow__id' }, [thumb, h('div', { 'class': 'adrow__text' }, [ad.previewUrl ? h('a', { 'class': 'adrow__name', href: ad.previewUrl, target: '_blank', rel: 'noopener', text: ad.name }) : h('div', { 'class': 'adrow__name', text: ad.name }), h('div', { 'class': 'crow__meta' }, [statusBadge(ad.status), h('span', { text: ad.adSetName || '' })]), linkLine(ad, 'adrow__link'), h('div', { 'class': 'adrow__tools' }, downloadLinks(ad, 'dl--sm'))])]),
       h('div', { 'class': 'crow__metrics crow__metrics--ad' }, metricCells(m, rlabel, false)),
       h('div', { 'class': 'crow__spark' }, [spark(daily, 'spend', '#e5534b')])
     ]);

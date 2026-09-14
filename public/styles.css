@@ -853,4 +853,12 @@ a.adrow__name:hover { color: var(--accent); }
 .bc__link:hover, .adrow__link:hover { text-decoration: underline; }
 .bc__link.is-none, .adrow__link.is-none { color: var(--text-muted); }
 .adrow__link { margin-top: 2px; }
+.bc__tools, .adrow__tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.bc__tools:empty, .adrow__tools:empty { display: none; }
+.adrow__tools { margin-top: 4px; }
+.dl { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 10px; border: 1px solid var(--con-line-strong, var(--border)); background: var(--con-panel, var(--bg-card)); color: var(--text); font-family: var(--mono, monospace); font-size: 11px; letter-spacing: 0.04em; text-decoration: none; line-height: 1.2; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+.dl:hover { border-color: var(--con-green, var(--success)); color: var(--con-green, var(--success)); text-decoration: none; }
+.dl__icon { font-size: 13px; line-height: 1; }
+.dl--ghost { color: var(--text-muted); border-color: transparent; }
+.dl--sm { padding: 2px 8px; font-size: 10px; }
 @media (max-width: 640px) { .pillbox__row { flex-direction: column; gap: 6px; } .pillbox__label { padding-top: 0; } }
