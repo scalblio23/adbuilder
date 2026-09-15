@@ -853,6 +853,8 @@ a.adrow__name:hover { color: var(--accent); }
 .pill--sm { padding: 4px 12px 4px 9px; font-size: 12px; }
 .pill__bk { font-family: var(--mono, monospace); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--con-green, var(--success)); border-left: 1px solid var(--con-line-strong, var(--border)); padding-left: 8px; }
 .pillbox__orphans { margin-top: 8px; }
+.picker__item--onboard { opacity: 0.85; cursor: default; }
+.picker__tick { width: 16px; text-align: center; color: var(--con-green, var(--success)); font-weight: 700; flex: 0 0 auto; }
 .pill--bk .pill__count { text-transform: none; letter-spacing: 0; }
 .bc__link, .adrow__link { font-size: 11px; color: #7aa7ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .bc__link:hover, .adrow__link:hover { text-decoration: underline; }

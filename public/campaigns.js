@@ -875,10 +875,12 @@
     // Step 2: campaigns of the chosen accounts, tick to show on the dashboard
     function drawCampaigns() {
       var selectedAccounts = Object.keys(chosenAccounts).filter(function (k) { return chosenAccounts[k]; });
-      var catalog = (data.catalog.items || []).filter(function (c) { return !tracked[c.id] && (!selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1); });
+      var inAccounts = function (c) { return !selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1; };
+      var catalog = (data.catalog.items || []).filter(function (c) { return !tracked[c.id] && inAccounts(c); });
+      var onBoard = (data.catalog.items || []).filter(function (c) { return tracked[c.id] && inAccounts(c); });
       var names = {}; (data.accounts || []).forEach(function (a) { names[a.id] = a.name; });
       var already = (data.catalog.items || []).filter(function (c) { return tracked[c.id] && (!selectedAccounts.length || !c.adAccountId || selectedAccounts.indexOf(c.adAccountId) !== -1); }).length;
-      panel.appendChild(h('p', { 'class': 'muted', text: 'Tick the campaigns to add to the dashboard. They join the ' + data.tracked.length + ' already there' + (already ? ' (' + already + ' from these accounts are hidden because they are already on it)' : '') + '. Only dashboard campaigns are pulled from Meta.' }));
+      panel.appendChild(h('p', { 'class': 'muted', text: 'Tick the campaigns to add to the dashboard. They join the ' + data.tracked.length + ' already there' + (already ? ' (' + already + ' from these accounts are already on it and listed below with a tick)' : '') + '. Only dashboard campaigns are pulled from Meta.' }));
       var search = h('input', { 'class': 'table__input', placeholder: 'Search campaigns…', type: 'search' });
       var list = h('div', { 'class': 'picker__list' });
       var countEl = h('span', { 'class': 'muted' });
@@ -888,15 +890,15 @@
         var q = search.value.trim().toLowerCase();
         var extra = Object.keys(chosen).filter(function (id) { return !catalog.some(function (c) { return c.id === id; }); }).map(function (id) { return chosen[id]; });
         var groups = {};
-        catalog.concat(extra).forEach(function (c) {
+        catalog.concat(extra).concat(onBoard.map(function (c) { return Object.assign({}, c, { onBoard: true }); })).forEach(function (c) {
           if (q && (c.name + ' ' + c.id + ' ' + (c.adAccountName || '')).toLowerCase().indexOf(q) === -1) return;
           var g = c.adAccountName || names[c.adAccountId] || c.adAccountId || 'Other';
           (groups[g] = groups[g] || []).push(c);
         });
         Object.keys(groups).sort().forEach(function (g) {
-          var items = groups[g];
-          var allBox = h('input', { type: 'checkbox', checked: items.every(function (c) { return !!chosen[c.id]; }) });
-          var groupRow = h('label', { 'class': 'picker__group picker__group--row' }, [allBox, h('span', { text: g + ' · ' + items.length })]);
+          var items = groups[g].filter(function (c) { return !c.onBoard; }), onItems = groups[g].filter(function (c) { return c.onBoard; });
+          var allBox = h('input', { type: 'checkbox', checked: items.length > 0 && items.every(function (c) { return !!chosen[c.id]; }) });
+          var groupRow = h('label', { 'class': 'picker__group picker__group--row' }, [allBox, h('span', { text: g + ' · ' + items.length + (onItems.length ? ' · ' + onItems.length + ' already on the dashboard' : '') })]);
           allBox.addEventListener('change', function () { items.forEach(function (c) { if (allBox.checked) chosen[c.id] = c; else delete chosen[c.id]; }); drawList(); });
           list.appendChild(groupRow);
           items.sort(function (a, b) { return (a.status === 'ACTIVE' ? 0 : 1) - (b.status === 'ACTIVE' ? 0 : 1) || a.name.localeCompare(b.name); }).forEach(function (c) {
@@ -907,9 +909,16 @@
             box.addEventListener('change', function () { if (box.checked) chosen[c.id] = c; else delete chosen[c.id]; item.classList.toggle('is-added', box.checked); item.lastChild.textContent = box.checked ? 'Adding' : 'Add'; countEl.textContent = selectedCount() + ' to add'; });
             list.appendChild(item);
           });
+          onItems.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
+            var t = tracked[c.id], on = isOn(t.id);
+            var sw = h('button', { 'class': 'btn btn--small', type: 'button', text: on ? 'Showing' : 'Switch on', disabled: on, onclick: function () { setFlag('adbuilder.accountOn.' + accountKey(t), true); setOn(t.id, true); render(); drawList(); } });
+            list.appendChild(h('div', { 'class': 'picker__item picker__item--onboard' }, [h('span', { 'class': 'picker__tick', text: '✓' }),
+              h('div', { 'class': 'picker__text' }, [h('strong', { text: c.name }), h('span', { text: 'ID ' + c.id + (c.status ? ' · ' + c.status : '') + ' · already on the dashboard · ' + (on ? 'switched on' : 'switched off (not shown until you switch it on)') + (t.stats ? '' : ' · no numbers yet: press Refresh') })]),
+              sw]));
+          });
         });
         if (!list.children.length) {
-          list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : already ? 'Every campaign from these accounts is already on the dashboard.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
+          list.appendChild(h('p', { 'class': 'muted', text: waiting ? 'Waiting for Hermes to send the campaign list…' : catalog.length ? 'Nothing matches.' : onBoard.length ? 'Every campaign from these accounts is already on the dashboard.' : 'No campaigns synced for these accounts yet. Go back and press "Pull campaigns", or add one by ID below.' }));
           if (waiting || !catalog.length) list.appendChild(diagnostics());
         }
         countEl.textContent = selectedCount() + ' to add';
