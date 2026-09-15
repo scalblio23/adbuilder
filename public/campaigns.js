@@ -43,7 +43,7 @@
 
   // ---- numbers ----
   var KEYS = ['spend', 'impressions', 'reach', 'clicksAll', 'linkClicks', 'uniqueClicks', 'uniqueLinkClicks', 'outboundClicks', 'landingPageViews', 'results', 'revenue', 'purchases', 'leads', 'newLeads', 'calls',
-    'postEngagement', 'pageEngagement', 'reactions', 'comments', 'shares', 'saves', 'pageLikes', 'videoPlays', 'videoViews3s', 'thruplays', 'videoP25', 'videoP50', 'videoP75', 'videoP100', 'messaging', 'socialSpend'];
+    'postEngagement', 'pageEngagement', 'reactions', 'comments', 'shares', 'saves', 'pageLikes', 'videoPlays', 'videoViews3s', 'thruplays', 'videoP25', 'videoP50', 'videoP75', 'videoP100', 'messaging', 'socialSpend', 'bookings'];
   // Every metric the tiles and cards can show. "conv.x" keys are the standard website/app events each row carries.
   var CATALOG = [
     { g: 'Spend & delivery', key: 'spend', label: 'Amount spent', fmt: money, low: true, color: '#e5534b' },
@@ -137,6 +137,7 @@
     out.costPerEngagement = per(m.postEngagement);
     out.costPerThruplay = per(m.thruplays);
     out.thruplayRate = m.impressions && m.thruplays != null ? m.thruplays / m.impressions : null;
+    out.costPerBooking = per(m.bookings);
     return out;
   }
   function sum(list) {
@@ -175,6 +176,18 @@
   }
   function inRange(daily, since, until) { return (daily || []).filter(function (d) { return d.date >= since && d.date <= until; }); }
   // Totals for a set of daily rows over the current timeframe, aligned per date for the charts.
+  // Bookings logged by hand (Ad Accounts tab) for the clients whose campaigns are switched on: { byDate, label }.
+  function bookingsFor(tracked) {
+    var onAccts = {}; tracked.forEach(function (t) { onAccts[accountKey(t)] = true; });
+    var byDate = {}, labels = {}, any = false;
+    ((data && data.bookings) || []).forEach(function (b) {
+      if (!b.metaAccountId || !onAccts[b.metaAccountId] || !b.entries.length) return;
+      any = true; labels[b.label || 'Bookings'] = true;
+      b.entries.forEach(function (e) { byDate[e.date] = (byDate[e.date] || 0) + (e.count || 0); });
+    });
+    var names = Object.keys(labels);
+    return { any: any, byDate: byDate, label: names.length === 1 ? names[0] : 'Bookings' };
+  }
   function series(tracked, r) {
     var byDate = {}, anyDaily = false, prevRows = [];
     tracked.forEach(function (t) {
@@ -186,10 +199,17 @@
         else if (d.date >= r.prevSince && d.date <= r.prevUntil) prevRows.push(d);
       });
     });
-    var rows = r.dates.map(function (d) { return Object.assign({ date: d }, sum(byDate[d] || [])); });
+    var bk = bookingsFor(tracked);
+    var rows = r.dates.map(function (d) { var row = Object.assign({ date: d }, sum(byDate[d] || [])); if (bk.any) row.bookings = bk.byDate[d] || 0; return row; });
     var current = anyDaily ? sum(rows) : sum(tracked.map(function (t) { return t.stats && t.stats.metrics; }));
     var hasPrev = prevRows.length > 0;
-    return { rows: rows, current: derive(current), previous: hasPrev ? derive(sum(prevRows)) : null, anyDaily: anyDaily, days: r.dates.length };
+    var previous = hasPrev ? sum(prevRows) : null;
+    if (bk.any) {
+      var inRangeTotal = function (since, until) { var n = 0; Object.keys(bk.byDate).forEach(function (d) { if (d >= since && d <= until) n += bk.byDate[d]; }); return n; };
+      current.bookings = inRangeTotal(r.since, r.until);
+      if (previous) previous.bookings = inRangeTotal(r.prevSince, r.prevUntil);
+    }
+    return { rows: rows, current: derive(current), previous: previous ? derive(previous) : null, anyDaily: anyDaily, days: r.dates.length, bookings: bk };
   }
   function delta(cur, prev, key) { if (!prev || !prev[key]) return null; return (cur[key] - prev[key]) / Math.abs(prev[key]); }
   // What the change arrows compare against, in words: "last week", "the day before", "the previous 30 days".
@@ -321,7 +341,7 @@
     var labelEl = h('div', { 'class': 'tile__label', text: def.label });
     var deltaEl = deltaTag(d, def.lowerIsBetter) || h('span', { 'class': 'perf__delta tile__delta--none', text: ' ' });
     var marker = h('div', { 'class': 'tile__marker', hidden: '' });
-    var el = h('div', { 'class': 'card tile' }, [labelEl, valueEl, deltaEl, rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null, marker]);
+    var el = h('div', { 'class': 'card tile' + (def.logged ? ' tile--logged' : ''), title: def.logged ? 'Logged by hand in the Ad Accounts tab for the switched-on clients; cost uses the spend of the switched-on campaigns.' : '' }, [labelEl, valueEl, deltaEl, rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null, marker]);
     if (rows && rows.length) {
       // Move or drag across the tile to read that day's value; leave to return to the period total.
       var n = rows.length;
@@ -380,8 +400,15 @@
   function summaryCards(sr, r, tracked) {
     var c = sr.current, p = sr.previous, rows = sr.anyDaily ? sr.rows : null;
     var defs = chosenDefs(resultLabel(tracked));
+    if (sr.bookings && sr.bookings.any) {
+      var bl = sr.bookings.label, unit = bl.replace(/s$/i, '').toLowerCase();
+      defs = defs.concat([
+        { key: 'bookings', label: bl + ' (logged)', fmt: count, lowerIsBetter: false, color: '#2ee6a6', logged: true },
+        { key: 'costPerBooking', label: 'Cost per ' + unit, fmt: money, lowerIsBetter: true, color: '#e0a52b', logged: true }
+      ]);
+    }
     var grid = h('div', { 'class': 'tiles' }, defs.map(function (def) { return tile(def, c, p, rows); }));
-    grid.appendChild(h('button', { 'class': 'tile tile--add', type: 'button', title: 'Choose which metrics to show', onclick: openMetrics }, [h('span', { 'class': 'tile__plus', text: '+' }), h('span', { 'class': 'tile__label', text: defs.length + ' / ' + MAX_METRICS + ' metrics' })]));
+    grid.appendChild(h('button', { 'class': 'tile tile--add', type: 'button', title: 'Choose which metrics to show', onclick: openMetrics }, [h('span', { 'class': 'tile__plus', text: '+' }), h('span', { 'class': 'tile__label', text: defs.filter(function (d) { return !d.logged; }).length + ' / ' + MAX_METRICS + ' metrics' })]));
     return grid;
   }
 

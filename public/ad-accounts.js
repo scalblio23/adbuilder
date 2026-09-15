@@ -70,6 +70,7 @@
   var loadSeq = 0;
   var lastJson = '';
   function load() {
+    loadBookings().then(function (changed) { if (changed && accounts.length && !editing && !draft) render(); });
     var seq = ++loadSeq;
     return request('GET', API).then(function (list) {
       if (seq !== loadSeq) return;   // an older response arriving late; a newer one is on its way
@@ -242,12 +243,113 @@
       textCell(account, 'link'),
       textCell(account, 'rules'),
       el('td', {}, [el('div', { 'class': 'table__actions' }, [
+        button(bookingsLabel(account), '', function () { openBookings(account); }),
         button('Delete', 'btn--danger', function () {
           if (!confirm('Delete the ad account for ' + (account.client || 'this client') + '?')) return;
           request('DELETE', API + '/' + account.id).then(load, failed('delete the account'));
         })
       ])])
     ]);
+  }
+
+  // ---- Bookings log per client: dates and counts, tied to the Meta ad account this client runs on ----
+  var bookingsByAccount = {}, lastBookingsJson = '';
+  function loadBookings() {
+    return request('GET', '/api/bookings').then(function (list) {
+      var json = JSON.stringify(list || []);
+      if (json === lastBookingsJson) return false;
+      lastBookingsJson = json;
+      bookingsByAccount = {}; (list || []).forEach(function (b) { bookingsByAccount[b.accountId] = b; });
+      return true;
+    }, function () { return false; });
+  }
+  function bookingsLabel(account) {
+    var b = bookingsByAccount[account.id];
+    return b && b.total ? (b.label || 'Bookings') + ' · ' + b.total : 'Bookings';
+  }
+  function todayIso() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function openBookings(account) {
+    var b = bookingsByAccount[account.id] || { metaAccountId: '', label: 'Bookings', entries: [] };
+    var entries = b.entries.map(function (e) { return { date: e.date, count: e.count }; });
+    var panel = el('div', { 'class': 'picker__panel' });
+    var overlay = el('div', { 'class': 'picker' }, [panel]);
+    overlay.addEventListener('click', function (event) { if (event.target === overlay) close(); });
+    function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(event) { if (event.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    var status = el('div', { 'class': 'notice', hidden: '' }, [el('span', { 'class': 'notice__dot' }), el('span')]);
+    function say(kind, text) { status.hidden = !text; status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = text || ''; }
+
+    var acctSel = el('select', { 'class': 'table__input' });
+    acctSel.appendChild(el('option', { value: '', text: 'Choose the Meta ad account…' }));
+    var acctHint = el('span', { 'class': 'field__hint', text: 'Loading ad accounts…' });
+    request('GET', '/api/tracked').then(function (o) {
+      var known = (o && o.accounts) || [];
+      known.forEach(function (a) { acctSel.appendChild(el('option', { value: a.id, text: a.name + ' — ' + a.id })); });
+      if (b.metaAccountId && !known.some(function (a) { return a.id === b.metaAccountId; })) acctSel.appendChild(el('option', { value: b.metaAccountId, text: b.metaAccountId }));
+      acctSel.value = b.metaAccountId || '';
+      acctHint.textContent = known.length ? 'The bookings roll up to this account on the Campaigns tab when its client pill is on.' + (b.linkedFromLink ? ' Prefilled from the ad account link.' : '') : 'No Meta ad accounts known yet: connect Meta on the Campaigns tab, or put the Ads Manager link (with act=) in the Ad Account Link column.';
+    }, function () { acctHint.textContent = 'Could not load the ad account list.'; });
+    var labelIn = el('input', { 'class': 'table__input', value: b.label || 'Bookings', placeholder: 'Bookings', maxlength: '40' });
+
+    var tbody = el('tbody');
+    var totalEl = el('strong');
+    function total() { return entries.reduce(function (n, e) { return n + (Number(e.count) || 0); }, 0); }
+    function drawRows() {
+      tbody.innerHTML = '';
+      entries.sort(function (a, c) { return a.date < c.date ? -1 : a.date > c.date ? 1 : 0; });
+      entries.forEach(function (e, i) {
+        var date = el('input', { 'class': 'table__input', type: 'date', value: e.date });
+        var count = el('input', { 'class': 'table__input bk__count', type: 'number', min: '0', step: '1', value: String(e.count) });
+        date.addEventListener('change', function () { e.date = date.value; });
+        count.addEventListener('input', function () { e.count = Number(count.value) || 0; totalEl.textContent = String(total()); });
+        var del = button('×', 'btn--danger btn--small', function () { entries.splice(i, 1); drawRows(); });
+        tbody.appendChild(el('tr', {}, [el('td', {}, [date]), el('td', {}, [count]), el('td', { 'class': 'table__actions-col' }, [del])]));
+      });
+      totalEl.textContent = String(total());
+      emptyRow.hidden = entries.length > 0;
+    }
+    var emptyRow = el('p', { 'class': 'muted', text: 'No bookings logged yet. Add a row per day.' });
+    var addBtn = button('+ Add a day', '', function () { entries.push({ date: todayIso(), count: 1 }); drawRows(); var last = tbody.lastChild && tbody.lastChild.querySelector('input[type=number]'); if (last) { last.focus(); last.select(); } });
+    var pasteBtn = button('Paste a list', '', function () {
+      var text = prompt('Paste lines like "28 Jul 2" or "2026-07-28, 2" (one per line). Rows with the same date add up.');
+      if (!text) return;
+      var year = new Date().getFullYear(), months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'], added = 0;
+      text.split(/\r?\n/).forEach(function (line) {
+        var m = /(\d{4}-\d{2}-\d{2})\D+(\d+)/.exec(line) || null, date = '', n = 0;
+        if (m) { date = m[1]; n = Number(m[2]); }
+        else {
+          var m2 = /(\d{1,2})\s*([A-Za-z]{3})[A-Za-z]*\.?(?:\s+(\d{4}))?\D+(\d+)\s*$/.exec(line.trim());
+          if (!m2) return;
+          var mi = months.indexOf(m2[2].toLowerCase()); if (mi < 0) return;
+          date = (m2[3] || year) + '-' + ('0' + (mi + 1)).slice(-2) + '-' + ('0' + m2[1]).slice(-2); n = Number(m2[4]);
+        }
+        if (!date || !(n >= 0)) return;
+        var hit = entries.filter(function (e) { return e.date === date; })[0];
+        if (hit) hit.count = (Number(hit.count) || 0) + n; else entries.push({ date: date, count: n });
+        added++;
+      });
+      drawRows();
+      say(added ? 'ok' : 'error', added ? added + ' line' + (added === 1 ? '' : 's') + ' added. Save to keep them.' : 'No lines understood. Use "28 Jul 2" or "2026-07-28 2".');
+    });
+    var saveBtn = button('Save', 'btn--primary', function () {
+      var bad = entries.filter(function (e) { return !/^\d{4}-\d{2}-\d{2}$/.test(e.date || ''); });
+      if (bad.length) return say('error', 'Every row needs a date.');
+      saveBtn.disabled = true; say('', 'Saving…');
+      request('PUT', '/api/bookings/' + account.id, { metaAccountId: acctSel.value, label: labelIn.value.trim() || 'Bookings', entries: entries.map(function (e) { return { date: e.date, count: Number(e.count) || 0 }; }) })
+        .then(function (saved) { bookingsByAccount[account.id] = saved; close(); render(); }, function (err) { saveBtn.disabled = false; say('error', 'Could not save: ' + err.message); });
+    });
+    drawRows();
+    panel.appendChild(el('div', { 'class': 'picker__head' }, [el('h3', { 'class': 'card__title', text: (account.client || 'Client') + ' · bookings' }), button('Close', '', close)]));
+    panel.appendChild(el('p', { 'class': 'muted', text: 'Log the bookings this client got, by day. They show as metric cards on the Campaigns tab (count and cost per booking) for the timeframe chosen there, using the spend of this client\'s campaigns.' }));
+    panel.appendChild(el('div', { 'class': 'field-row' }, [
+      el('div', { 'class': 'field' }, [el('label', { text: 'Meta ad account' }), acctSel, acctHint]),
+      el('div', { 'class': 'field' }, [el('label', { text: 'Call them' }), labelIn, el('span', { 'class': 'field__hint', text: 'e.g. Bookings, Calls, Appointments. Cost per one is named after it.' })])
+    ]));
+    panel.appendChild(el('div', { 'class': 'picker__list bk__list' }, [el('table', { 'class': 'table bk' }, [el('thead', {}, [el('tr', {}, [el('th', { text: 'Date' }), el('th', { text: 'Count' }), el('th', {})])]), tbody]), emptyRow]));
+    panel.appendChild(el('div', { 'class': 'picker__foot' }, [el('div', { 'class': 'btn-row' }, [addBtn, pasteBtn]), el('div', { 'class': 'bk__total' }, [el('span', { 'class': 'muted', text: 'Total ' }), totalEl]), saveBtn]));
+    panel.appendChild(status);
+    document.body.appendChild(overlay);
   }
 
   // New rows use a full editing row with Save / Cancel.

@@ -861,4 +861,10 @@ a.adrow__name:hover { color: var(--accent); }
 .dl__icon { font-size: 13px; line-height: 1; }
 .dl--ghost { color: var(--text-muted); border-color: transparent; }
 .dl--sm { padding: 2px 8px; font-size: 10px; }
+.tile--logged { border-style: dashed; }
+.bk__list { overflow: auto; max-height: 45vh; }
+.bk td, .bk th { padding: 6px 8px; }
+.bk__count { width: 90px; }
+.bk__total { margin-left: auto; margin-right: 12px; font-size: 14px; }
+.bk__total strong { color: var(--text); font-size: 18px; }
 @media (max-width: 640px) { .pillbox__row { flex-direction: column; gap: 6px; } .pillbox__label { padding-top: 0; } }
