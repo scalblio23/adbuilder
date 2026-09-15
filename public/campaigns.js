@@ -56,6 +56,8 @@
     { g: 'Results', key: 'results', label: 'Results', fmt: count, color: '#3ec27a', dyn: true },
     { g: 'Results', key: 'costPerResult', label: 'Cost per result', fmt: money, low: true, color: '#e0a52b' },
     { g: 'Results', key: 'resultRate', label: 'Result rate', fmt: pct },
+    { g: 'Results', key: 'optinRate', label: 'Opt-in rate', fmt: pct, color: '#3ec27a', hint: 'Leads ÷ link clicks' },
+    { g: 'Results', key: 'leadToBooking', label: 'Lead to booking rate', fmt: pct, color: '#2ee6a6', hint: 'Bookings (logged) ÷ leads' },
     { g: 'Clicks', key: 'clicksAll', label: 'Clicks (all)', fmt: count },
     { g: 'Clicks', key: 'linkClicks', label: 'Link clicks', fmt: count },
     { g: 'Clicks', key: 'uniqueClicks', label: 'Unique clicks (all)', fmt: count },
@@ -138,6 +140,8 @@
     out.costPerThruplay = per(m.thruplays);
     out.thruplayRate = m.impressions && m.thruplays != null ? m.thruplays / m.impressions : null;
     out.costPerBooking = per(m.bookings);
+    out.optinRate = link ? (m.leads || 0) / link : null;
+    out.leadToBooking = m.bookings != null && m.leads ? m.bookings / m.leads : null;
     return out;
   }
   function sum(list) {
@@ -358,7 +362,7 @@
     var labelEl = h('div', { 'class': 'tile__label', text: def.label });
     var deltaEl = deltaTag(d, def.lowerIsBetter) || h('span', { 'class': 'perf__delta tile__delta--none', text: ' ' });
     var marker = h('div', { 'class': 'tile__marker', hidden: '' });
-    var el = h('div', { 'class': 'card tile' + (def.logged ? ' tile--logged' : ''), title: def.logged ? 'Logged by hand in the Ad Accounts tab for the switched-on clients; cost uses the spend of the switched-on campaigns.' : '' }, [labelEl, valueEl, deltaEl, rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null, marker]);
+    var el = h('div', { 'class': 'card tile' + (def.logged ? ' tile--logged' : ''), title: def.logged ? 'Logged by hand for the switched-on clients; cost uses the spend of the switched-on campaigns.' : (def.hint || '') }, [labelEl, valueEl, deltaEl, rows ? tileSpark(rows, function (d) { return d[def.key]; }, def.color || '#d9d9d9') : null, marker]);
     if (rows && rows.length) {
       // Move or drag across the tile to read that day's value; leave to return to the period total.
       var n = rows.length;
@@ -412,7 +416,7 @@
   // The chosen metrics as tile/cell definitions (the Results label follows the campaigns' result type).
   function chosenDefs(rlabel) {
     var keys = (data && data.dashboard && data.dashboard.metrics) || [];
-    return keys.map(function (k) { return BY_KEY[k]; }).filter(Boolean).map(function (c) { return { key: c.key, label: c.dyn ? rlabel : c.label, fmt: c.fmt, lowerIsBetter: !!c.low, color: c.color }; });
+    return keys.map(function (k) { return BY_KEY[k]; }).filter(Boolean).map(function (c) { return { key: c.key, label: c.dyn ? rlabel : c.label, fmt: c.fmt, lowerIsBetter: !!c.low, color: c.color, hint: c.hint || '' }; });
   }
   function summaryCards(sr, r, tracked) {
     var c = sr.current, p = sr.previous, rows = sr.anyDaily ? sr.rows : null;
