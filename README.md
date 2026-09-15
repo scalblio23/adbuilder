@@ -141,6 +141,10 @@ account has no owner counts under the account's own name. The Client dropdown on
 overrides this for one campaign (`PUT /api/tracked/:id { client }`). Meta still pulls by campaign
 id, so all of this changes only grouping.
 
+**Master stats tab.** One big cell per client from the Clients manager, alphabetical, with the
+bookings logged for it in the last 30 days, the change against the 30 days before, a bar per day,
+and the all-time total (`public/master-stats.js`, reading `/api/clients` and `/api/bookings`).
+
 **Bookings logged per client.** The Bookings row on the Campaigns tab has one button per client
 that opens a log of dates and counts, named as you like (Bookings, Calls, …), stored as
 `bookings/c-<client slug>`. Older logs keyed by ad account count for that account's default client. The Ad Accounts tab has the same log per row, tied to
