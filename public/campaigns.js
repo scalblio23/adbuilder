@@ -324,16 +324,33 @@
     return h('span', { 'class': 'perf__delta ' + (good ? 'is-up' : 'is-down'), title: 'Compared with ' + (currentRange ? compareLabel(currentRange) : 'the previous period'), text: currentRange ? changeText(v, currentRange) : (v >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(v)) });
   }
   // Ten uniform square tiles, five per row: one Meta metric each, with its change vs the previous period and a sparkline.
+  // Straight line of best fit (least squares) through the daily values, so the direction over the period is
+  // clear even when the days are spiky. Days with no value are left out of the fit.
+  function trendOf(vals) {
+    var pts = []; vals.forEach(function (v, i) { if (v != null && isFinite(v)) pts.push([i, v]); });
+    var n = pts.length; if (n < 2) return null;
+    var sx = 0, sy = 0, sxx = 0, sxy = 0;
+    pts.forEach(function (p) { sx += p[0]; sy += p[1]; sxx += p[0] * p[0]; sxy += p[0] * p[1]; });
+    var den = n * sxx - sx * sx; if (!den) return null;
+    var slope = (n * sxy - sx * sy) / den, intercept = (sy - slope * sx) / n;
+    return { slope: slope, intercept: intercept, first: pts[0][0], last: pts[n - 1][0] };
+  }
   function tileSpark(rows, valueOf, color) {
     var W = 120, H = 28, n = rows.length;
     if (n < 2) return null;
-    var vals = rows.map(function (d) { var v = valueOf(derive(d)); return v == null || !isFinite(v) ? 0 : v; });
+    var raw = rows.map(function (d) { var v = valueOf(derive(d)); return v == null || !isFinite(v) ? null : v; });
+    var vals = raw.map(function (v) { return v == null ? 0 : v; });
     var max = Math.max.apply(null, vals) || 1;
-    var pts = vals.map(function (v, i) { return (W * i / (n - 1)).toFixed(1) + ',' + (H - 2 - (H - 4) * v / max).toFixed(1); });
-    return s('svg', { viewBox: '0 0 ' + W + ' ' + H, 'class': 'tile__spark', 'aria-hidden': 'true', preserveAspectRatio: 'none' }, [
+    var y = function (v) { return (H - 2 - (H - 4) * Math.max(0, Math.min(max, v)) / max).toFixed(1); };
+    var x = function (i) { return (W * i / (n - 1)).toFixed(1); };
+    var pts = vals.map(function (v, i) { return x(i) + ',' + y(v); });
+    var t = trendOf(raw);
+    var kids = [
       s('path', { d: 'M' + pts.join(' L') + ' L' + W + ',' + H + ' L0,' + H + ' Z', fill: color, 'fill-opacity': 0.12 }),
       s('path', { d: 'M' + pts.join(' L'), fill: 'none', stroke: color, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' })
-    ]);
+    ];
+    if (t) kids.push(s('line', { x1: x(t.first), y1: y(t.intercept + t.slope * t.first), x2: x(t.last), y2: y(t.intercept + t.slope * t.last), 'class': 'tile__trend', stroke: color === '#d9d9d9' ? '#2ee6a6' : '#ffffff', 'stroke-opacity': 0.75, 'stroke-width': 1, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke' }));
+    return s('svg', { viewBox: '0 0 ' + W + ' ' + H, 'class': 'tile__spark', 'aria-hidden': 'true', preserveAspectRatio: 'none' }, kids);
   }
   function tile(def, c, p, rows) {
     var d = delta(c, p, def.key);
