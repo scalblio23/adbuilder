@@ -134,10 +134,12 @@ then calls Refresh again automatically until everything is current. The cron doe
 firing, so with very many campaigns the stalest-first order spreads them across firings.
 
 **Clients, ad accounts, campaigns.** The pills on the Campaigns tab go client → ad account →
-campaign. A campaign's client defaults to its ad account's name; the Client dropdown on a campaign
-card attributes it to another client (or a new one, `PUT /api/tracked/:id { client }`), so campaigns
-from several ad accounts can share one client pill and one shared account can be split between
-clients. Meta still pulls by campaign id, so moving a campaign changes only grouping.
+campaign. The Clients button opens a manager where clients are created and handed whole ad accounts
+(`GET /api/clients`, `PUT /api/clients/:slug { name, accounts: ["act_…"] }`, `DELETE`); an ad
+account belongs to one client and every campaign in it counts under that client. A campaign whose
+account has no owner counts under the account's own name. The Client dropdown on a campaign card
+overrides this for one campaign (`PUT /api/tracked/:id { client }`). Meta still pulls by campaign
+id, so all of this changes only grouping.
 
 **Bookings logged per client.** The Bookings row on the Campaigns tab has one button per client
 that opens a log of dates and counts, named as you like (Bookings, Calls, …), stored as

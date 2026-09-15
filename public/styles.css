@@ -854,6 +854,12 @@ a.adrow__name:hover { color: var(--accent); }
 .pill__bk { font-family: var(--mono, monospace); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--con-green, var(--success)); border-left: 1px solid var(--con-line-strong, var(--border)); padding-left: 8px; }
 .pillbox__orphans { margin-top: 8px; }
 .picker__item--onboard { opacity: 0.85; cursor: default; }
+.clients__row { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--bg); }
+.clients__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.clients__head .table__input { flex: 1 1 200px; }
+.clients__accts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; }
+.clients__acct { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.clients__acct.is-elsewhere { color: var(--text-muted); }
 .picker__tick { width: 16px; text-align: center; color: var(--con-green, var(--success)); font-weight: 700; flex: 0 0 auto; }
 .pill--bk .pill__count { text-transform: none; letter-spacing: 0; }
 .bc__link, .adrow__link { font-size: 11px; color: #7aa7ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }

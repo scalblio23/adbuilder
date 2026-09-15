@@ -557,14 +557,24 @@
   function accountKey(t) { return t.adAccountId || 'none'; }
   // A client is the label a campaign is attributed to (default: its ad account's name); campaigns from
   // different ad accounts can share one. The slug is the key its bookings are stored under.
-  function clientOf(t) { return t.client || t.adAccountName || t.adAccountId || 'No client'; }
   function slug(name) { return 'c-' + (String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'client'); }
-  function clientKeyOf(t) { return slug(clientOf(t)); }
+  function clientDocs() { return (data && data.clients) || []; }
+  function ownerOf(acct) { return clientDocs().filter(function (c) { return c.accounts.indexOf(acct) !== -1; })[0] || null; }
+  // { key, name } of the client a campaign counts under: its own override, else the client owning its ad account, else the account itself.
+  function clientRef(t) {
+    if (t.client) { var byName = clientDocs().filter(function (c) { return c.name === t.client; })[0]; return byName ? { key: byName.id, name: byName.name } : { key: slug(t.client), name: t.client }; }
+    var owner = ownerOf(t.adAccountId || '');
+    if (owner) return { key: owner.id, name: owner.name };
+    var n = t.adAccountName || t.adAccountId || 'No client';
+    return { key: slug(n), name: n };
+  }
+  function clientOf(t) { return clientRef(t).name; }
+  function clientKeyOf(t) { return clientRef(t).key; }
   function clientOn(key) { return flag('adbuilder.clientOn.' + key); }
   function accountOn(t) { return clientOn(clientKeyOf(t)) && flag('adbuilder.accountOn.' + accountKey(t)); }
   function campaignOn(id) { return flag('adbuilder.campaignOn.' + id); }
   function isOn(id) { var t = ((data && data.tracked) || []).filter(function (x) { return x.id === id; })[0]; return t ? accountOn(t) && campaignOn(id) : campaignOn(id); }
-  function clientNames() { var seen = {}, out = []; ((data && data.tracked) || []).forEach(function (t) { var n = clientOf(t); if (!seen[n]) { seen[n] = true; out.push(n); } }); return out.sort(); }
+  function clientNames() { var seen = {}, out = []; clientDocs().forEach(function (c) { if (!seen[c.name]) { seen[c.name] = true; out.push(c.name); } }); ((data && data.tracked) || []).forEach(function (t) { var n = clientOf(t); if (!seen[n]) { seen[n] = true; out.push(n); } }); return out.sort(); }
   function setOn(id, on) { setFlag('adbuilder.campaignOn.' + id, on); }
   // Two rows of pills: one per client (ad account), then one per campaign of the clients that are on.
   // ---- bookings log, per client, on this tab: dates and counts tied to the client's Meta ad account ----
@@ -651,6 +661,70 @@
     });
     return out;
   }
+  // ---- Clients manager: create clients and hand them whole ad accounts (their campaigns follow) ----
+  function openClients() {
+    var panel = h('div', { 'class': 'picker__panel picker__panel--wide' });
+    var overlay = h('div', { 'class': 'picker' }, [panel]);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    var status = h('div', { 'class': 'notice', hidden: '' }, [h('span', { 'class': 'notice__dot' }), h('span')]);
+    function say(kind, text) { status.hidden = !text; status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = text || ''; }
+    // every ad account we know of: the Meta catalog, the Ad Accounts tab, and whatever the tracked campaigns run in
+    function knownAccts() {
+      var out = {}, order = [];
+      (data.accounts || []).forEach(function (a) { if (!out[a.id]) { out[a.id] = a.name || a.id; order.push(a.id); } });
+      (data.tracked || []).forEach(function (t) { if (t.adAccountId && !out[t.adAccountId]) { out[t.adAccountId] = t.adAccountName || t.adAccountId; order.push(t.adAccountId); } });
+      return order.map(function (id) { return { id: id, name: out[id] }; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    }
+    var list = h('div', { 'class': 'picker__list clients' });
+    function saveClient(id, body) {
+      return request('PUT', '/api/clients/' + encodeURIComponent(id), body).then(function (l) { data.clients = l; return request('GET', '/api/bookings'); }).then(function (b) { data.bookings = b; render(); draw(); });
+    }
+    function draw() {
+      list.innerHTML = '';
+      var accts = knownAccts();
+      if (!clientDocs().length) list.appendChild(h('p', { 'class': 'muted', text: 'No clients yet. Add one below, then tick the ad accounts it owns. Campaigns in those accounts count under the client; a campaign can still be moved elsewhere from its card.' }));
+      clientDocs().forEach(function (c) {
+        var nameIn = h('input', { 'class': 'table__input', value: c.name, maxlength: '120' });
+        var count = (data.tracked || []).filter(function (t) { return clientKeyOf(t) === c.id; }).length;
+        var boxes = h('div', { 'class': 'clients__accts' }, accts.map(function (a) {
+          var owner = ownerOf(a.id), mine = owner && owner.id === c.id;
+          var box = h('input', { type: 'checkbox', checked: mine });
+          box.addEventListener('change', function () {
+            var next = c.accounts.filter(function (x) { return x !== a.id; }); if (box.checked) next.push(a.id);
+            saveClient(c.id, { accounts: next }).catch(function (err) { say('error', err.message); draw(); });
+          });
+          return h('label', { 'class': 'clients__acct' + (owner && !mine ? ' is-elsewhere' : ''), title: owner && !mine ? 'Currently under ' + owner.name + '; ticking moves it here' : '' }, [box, h('span', { text: a.name + (owner && !mine ? ' · under ' + owner.name : '') })]);
+        }));
+        var renameBtn = h('button', { 'class': 'btn btn--small', type: 'button', onclick: function () { var n = nameIn.value.trim(); if (!n || n === c.name) return; saveClient(c.id, { name: n }).then(function () { say('ok', 'Renamed to ' + n + '.'); }, function (err) { say('error', err.message); }); } }, ['Rename']);
+        var delBtn = h('button', { 'class': 'btn btn--small btn--danger', type: 'button', onclick: function () {
+          if (!confirm('Delete client "' + c.name + '"? Its ad accounts go back to being their own clients. Bookings logged under it stay stored.')) return;
+          request('DELETE', '/api/clients/' + encodeURIComponent(c.id)).then(function (l) { data.clients = l; return request('GET', '/api/bookings'); }).then(function (b) { data.bookings = b; render(); draw(); }, function (err) { say('error', err.message); });
+        } }, ['Delete']);
+        list.appendChild(h('div', { 'class': 'clients__row' }, [
+          h('div', { 'class': 'clients__head' }, [nameIn, renameBtn, h('span', { 'class': 'muted mono', text: c.accounts.length + ' account' + (c.accounts.length === 1 ? '' : 's') + ' · ' + count + ' campaign' + (count === 1 ? '' : 's') }), delBtn]),
+          accts.length ? boxes : h('p', { 'class': 'muted', text: 'No ad accounts known yet. Add campaigns first, or fetch ad accounts in the picker.' })
+        ]));
+      });
+    }
+    var newName = h('input', { 'class': 'table__input', placeholder: 'New client name, e.g. Elecsol', maxlength: '120' });
+    var addBtn = h('button', { 'class': 'btn btn--primary', type: 'button', onclick: function () {
+      var n = newName.value.trim(); if (!n) { newName.focus(); return; }
+      var id = slug(n);
+      if (clientDocs().some(function (c) { return c.id === id; })) return say('error', 'There is already a client called ' + n + '.');
+      saveClient(id, { name: n, accounts: [] }).then(function () { newName.value = ''; setFlag('adbuilder.clientOn.' + id, true); say('ok', n + ' added. Tick the ad accounts it owns.'); }, function (err) { say('error', err.message); });
+    } }, ['Add client']);
+    newName.addEventListener('keydown', function (e) { if (e.key === 'Enter') addBtn.click(); });
+    panel.appendChild(h('div', { 'class': 'picker__head' }, [h('h3', { 'class': 'card__title', text: 'Clients' }), h('button', { 'class': 'btn', type: 'button', onclick: close }, ['Close'])]));
+    panel.appendChild(h('p', { 'class': 'muted', text: 'A client owns whole ad accounts: every campaign in those accounts counts under it (pills, bookings, cost per booking). An ad account belongs to one client. Single campaigns can still be moved from the Client dropdown on their card.' }));
+    panel.appendChild(h('div', { 'class': 'btn-row', style: 'margin-bottom:10px' }, [newName, addBtn]));
+    panel.appendChild(list);
+    panel.appendChild(status);
+    document.body.appendChild(overlay);
+    draw();
+  }
   function pillRows(tracked) {
     var bk = bookingsByClient(), r0 = currentRange;
     // Clients (top) -> their ad accounts -> campaigns. A campaign's client defaults to its ad account.
@@ -720,17 +794,18 @@
     var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(keys.map(function (k) { return h('option', { value: k, text: labelFor(k, allConvLabels()) + (k === 'reach' ? '' : ' · ' + count(totals[k]) + ' in stored days') }); })));
     // Client: which pill this campaign counts under (default: its ad account). Campaigns from other ad accounts can share it.
     var acctName = t.adAccountName || t.adAccountId || 'No client';
+    var ownerC = ownerOf(t.adAccountId || ''), defaultName = ownerC ? ownerC.name : acctName;
     var clientSel = h('select', { 'class': 'crow__result', title: 'Which client this campaign is attributed to' },
-      [h('option', { value: '', text: 'Same as ad account (' + acctName + ')' })]
-        .concat(clientNames().filter(function (n) { return n !== acctName; }).map(function (n) { return h('option', { value: n, text: n }); }))
+      [h('option', { value: '', text: 'Default: ' + defaultName + (ownerC ? ' (owns ' + acctName + ')' : ' (the ad account)') })]
+        .concat(clientNames().filter(function (n) { return n !== defaultName; }).map(function (n) { return h('option', { value: n, text: n }); }))
         .concat([h('option', { value: '__new', text: 'New client…' })]));
-    clientSel.value = t.client && t.client !== acctName ? t.client : '';
+    clientSel.value = t.client && t.client !== defaultName ? t.client : '';
     clientSel.addEventListener('change', function () {
       var v = clientSel.value;
       if (v === '__new') { v = (prompt('Name of the client to attribute "' + t.name + '" to:') || '').trim(); if (!v) { clientSel.value = t.client || ''; return; } }
-      if (v === acctName) v = '';
+      if (v === defaultName) v = '';
       clientSel.disabled = true;
-      request('PUT', '/api/tracked/' + t.id, { client: v }).then(function (o) { setFlag('adbuilder.clientOn.' + slug(v || acctName), true); return request('GET', '/api/bookings').then(function (list) { o.bookings = list; apply(o); }); }, function (err) { clientSel.disabled = false; setNotice('error', err.message); });
+      request('PUT', '/api/tracked/' + t.id, { client: v }).then(function (o) { setFlag('adbuilder.clientOn.' + (v ? slug(v) : clientKeyOf(Object.assign({}, t, { client: '' }))), true); return request('GET', '/api/bookings').then(function (list) { o.bookings = list; apply(o); }); }, function (err) { clientSel.disabled = false; setNotice('error', err.message); });
     });
     resultSel.value = t.resultOverride || '';
     resultSel.addEventListener('change', function () {
@@ -1074,7 +1149,7 @@
   [sinceIn, untilIn].forEach(function (inp) { inp.addEventListener('change', function () { frame.since = sinceIn.value; frame.until = untilIn.value; saveFrame(); if (data) render(); }); });
   root.appendChild(h('div', { 'class': 'perf-toolbar' }, [
     h('div', {}, [h('h2', { 'class': 'card__title', text: 'Current campaigns', style: 'margin:0' }), subtitle]),
-    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), h('button', { 'class': 'btn', type: 'button', onclick: openMetrics }, ['Metrics']), chooseBtn, editBtn, refreshBtn])
+    h('div', { 'class': 'btn-row perf-toolbar__right' }, [h('div', { 'class': 'frame' }, [frameSel, customBox]), h('button', { 'class': 'btn', type: 'button', onclick: function () { if (data) openClients(); } }, ['Clients']), h('button', { 'class': 'btn', type: 'button', onclick: openMetrics }, ['Metrics']), chooseBtn, editBtn, refreshBtn])
   ]));
   root.appendChild(notice);
   root.appendChild(body);
