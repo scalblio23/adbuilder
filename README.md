@@ -127,6 +127,12 @@ same token: Pages come from `/me/accounts`, the businesses' owned and client pag
 account's `promote_pages`; pixels from each account's `adspixels`. A source the token cannot read
 is skipped and named in the result. Without a token the button falls back to what Hermes sent.
 
+**How a refresh runs.** Tracked campaigns are pulled stalest first, three at a time, and each one is
+stored the moment it lands. A run stops starting new campaigns after `REFRESH_BUDGET_MS` (40 s;
+`api/index.js` is allowed 60 s in `vercel.json`) and reports how many are left; the Campaigns tab
+then calls Refresh again automatically until everything is current. The cron does one run per
+firing, so with very many campaigns the stalest-first order spreads them across firings.
+
 **Bookings logged per client.** The Campaigns tab has a Bookings row under the client pills: one
 button per client (Meta ad account) opens a log of dates and counts, named as you like (Bookings,
 Calls, …), stored as `bookings/act_<id>`. The Ad Accounts tab has the same log per row, tied to

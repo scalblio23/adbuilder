@@ -1106,12 +1106,15 @@
       }, 20000);
     })();
   }
-  function doRefresh() {
-    refreshBtn.disabled = true; refreshBtn.textContent = data && data.source === 'meta' ? 'Pulling from Meta…' : 'Asking Hermes…';
+  function doRefresh(round) {
+    round = round || 1;
+    refreshBtn.disabled = true; refreshBtn.textContent = data && data.source === 'meta' ? (round > 1 ? 'Pulling from Meta… (round ' + round + ')' : 'Pulling from Meta…') : 'Asking Hermes…';
     request('POST', '/api/tracked/refresh').then(function (r) {
       if (r.refresh.direct) {
-        var errs = r.refresh.errors || [];
-        setNotice(errs.length ? 'error' : 'ok', 'Pulled ' + r.refresh.stored + ' of ' + r.refresh.campaigns + ' campaign' + (r.refresh.campaigns === 1 ? '' : 's') + ' from Meta.' + (errs.length ? ' Failed: ' + errs.map(function (e) { return e.name + ' (' + e.error + ')'; }).join('; ') : ''));
+        var errs = r.refresh.errors || [], left = r.refresh.remaining || 0;
+        var msg = 'Pulled ' + r.refresh.stored + ' of ' + r.refresh.campaigns + ' campaign' + (r.refresh.campaigns === 1 ? '' : 's') + ' from Meta' + (round > 1 ? ' in this round' : '') + '.' + (errs.length ? ' Failed: ' + errs.map(function (e) { return e.name + ' (' + e.error + ')'; }).join('; ') : '');
+        if (left && round < 8) { setNotice('ok', msg + ' ' + left + ' still to pull (' + (r.refresh.remainingNames || []).join(', ') + '), continuing…'); return load().then(function () { return doRefresh(round + 1); }); }
+        setNotice(errs.length || left ? 'error' : 'ok', msg + (left ? ' ' + left + ' not pulled yet: press Refresh again.' : ''));
         return load();
       }
       setNotice('ok', 'Hermes accepted the request (HTTP ' + r.refresh.status + ') for ' + r.refresh.campaigns + ' campaign' + (r.refresh.campaigns === 1 ? '' : 's') + '. Numbers appear here once it has pulled them; this page checks every 20 seconds.');
