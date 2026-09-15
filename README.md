@@ -127,11 +127,12 @@ same token: Pages come from `/me/accounts`, the businesses' owned and client pag
 account's `promote_pages`; pixels from each account's `adspixels`. A source the token cannot read
 is skipped and named in the result. Without a token the button falls back to what Hermes sent.
 
-**Bookings logged per client.** Each row in the Ad Accounts tab has a Bookings button that opens a
-log of dates and counts for that client, tied to the Meta ad account the client runs on (prefilled
-from an `act=` link, changeable in the panel) and named as you like (Bookings, Calls, …).
-Stored as `bookings/<row id>` documents (`GET /api/bookings`, `PUT /api/bookings/:rowId
-{ metaAccountId, label, entries: [{ date, count }] }`). On the Campaigns tab, when a client pill is
+**Bookings logged per client.** The Campaigns tab has a Bookings row under the client pills: one
+button per client (Meta ad account) opens a log of dates and counts, named as you like (Bookings,
+Calls, …), stored as `bookings/act_<id>`. The Ad Accounts tab has the same log per row, tied to
+the Meta ad account the client runs on (prefilled from an `act=` link), stored as
+`bookings/<row id>` (`GET /api/bookings`, `PUT /api/bookings/:id { metaAccountId, label,
+entries: [{ date, count }] }`). On the Campaigns tab, when a client pill is
 on and that client has bookings, two extra tiles appear for the chosen timeframe: the count and
 the cost per one (spend of the switched-on campaigns divided by the bookings), on top of the 15
 chosen Meta metrics.

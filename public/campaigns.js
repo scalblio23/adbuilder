@@ -543,6 +543,79 @@
   function isOn(id) { var t = ((data && data.tracked) || []).filter(function (x) { return x.id === id; })[0]; return t ? accountOn(t) && campaignOn(id) : campaignOn(id); }
   function setOn(id, on) { setFlag('adbuilder.campaignOn.' + id, on); }
   // Two rows of pills: one per client (ad account), then one per campaign of the clients that are on.
+  // ---- bookings log, per client, on this tab: dates and counts tied to the client's Meta ad account ----
+  function bookingDocFor(acctKey) {
+    return ((data && data.bookings) || []).filter(function (b) { return b.metaAccountId === acctKey; }).sort(function (a, b) { return (b.entries.length - a.entries.length); })[0] || null;
+  }
+  function openBookings(acct) {
+    var existing = bookingDocFor(acct.key);
+    var docId = existing ? existing.accountId : acct.key;
+    var entries = ((existing && existing.entries) || []).map(function (e) { return { date: e.date, count: e.count }; });
+    var panel = h('div', { 'class': 'picker__panel' });
+    var overlay = h('div', { 'class': 'picker' }, [panel]);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    var status = h('div', { 'class': 'notice', hidden: '' }, [h('span', { 'class': 'notice__dot' }), h('span')]);
+    function say(kind, text) { status.hidden = !text; status.className = 'notice' + (kind ? ' notice--' + kind : ''); status.lastChild.textContent = text || ''; }
+    var labelIn = h('input', { 'class': 'table__input', value: (existing && existing.label) || 'Bookings', placeholder: 'Bookings', maxlength: '40' });
+    var tbody = h('tbody'), totalEl = h('strong');
+    var emptyRow = h('p', { 'class': 'muted', text: 'Nothing logged yet. Add a day, or paste a list.' });
+    function total() { return entries.reduce(function (n, e) { return n + (Number(e.count) || 0); }, 0); }
+    function drawRows() {
+      tbody.innerHTML = '';
+      entries.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+      entries.forEach(function (e, i) {
+        var date = h('input', { 'class': 'table__input', type: 'date', value: e.date, onchange: function () { e.date = date.value; } });
+        var cnt = h('input', { 'class': 'table__input bk__count', type: 'number', min: '0', step: '1', value: String(e.count), oninput: function () { e.count = Number(cnt.value) || 0; totalEl.textContent = String(total()); } });
+        tbody.appendChild(h('tr', {}, [h('td', {}, [date]), h('td', {}, [cnt]), h('td', { 'class': 'table__actions-col' }, [h('button', { 'class': 'btn btn--danger btn--small', type: 'button', onclick: function () { entries.splice(i, 1); drawRows(); } }, ['×'])])]));
+      });
+      totalEl.textContent = String(total());
+      emptyRow.hidden = entries.length > 0;
+    }
+    function todayIso() { return iso(new Date()); }
+    var addBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () { entries.push({ date: todayIso(), count: 1 }); drawRows(); var last = tbody.lastChild && tbody.lastChild.querySelector('input[type=number]'); if (last) { last.focus(); last.select(); } } }, ['+ Add a day']);
+    var pasteBtn = h('button', { 'class': 'btn', type: 'button', onclick: function () {
+      var text = prompt('Paste lines like "28 Jul 2" or "2026-07-28, 2" (one per line). Rows with the same date add up.');
+      if (!text) return;
+      var year = new Date().getFullYear(), months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'], added = 0;
+      text.split(/\r?\n/).forEach(function (line) {
+        var m = /(\d{4}-\d{2}-\d{2})\D+(\d+)/.exec(line), date = '', n = 0;
+        if (m) { date = m[1]; n = Number(m[2]); }
+        else {
+          var m2 = /(\d{1,2})\s*([A-Za-z]{3})[A-Za-z]*\.?(?:\s+(\d{4}))?\D+(\d+)\s*$/.exec(line.trim());
+          if (!m2) return;
+          var mi = months.indexOf(m2[2].toLowerCase()); if (mi < 0) return;
+          date = (m2[3] || year) + '-' + pad(mi + 1) + '-' + pad(Number(m2[1])); n = Number(m2[4]);
+        }
+        if (!date || !(n >= 0)) return;
+        var hit = entries.filter(function (e) { return e.date === date; })[0];
+        if (hit) hit.count = (Number(hit.count) || 0) + n; else entries.push({ date: date, count: n });
+        added++;
+      });
+      drawRows();
+      say(added ? 'ok' : 'error', added ? added + ' line' + (added === 1 ? '' : 's') + ' added. Save to keep them.' : 'No lines understood. Use "28 Jul 2" or "2026-07-28 2".');
+    } }, ['Paste a list']);
+    var saveBtn = h('button', { 'class': 'btn btn--primary', type: 'button' }, ['Save']);
+    saveBtn.addEventListener('click', function () {
+      if (entries.some(function (e) { return !/^\d{4}-\d{2}-\d{2}$/.test(e.date || ''); })) return say('error', 'Every row needs a date.');
+      saveBtn.disabled = true; say('', 'Saving…');
+      var body = { label: labelIn.value.trim() || 'Bookings', entries: entries.map(function (e) { return { date: e.date, count: Number(e.count) || 0 }; }) };
+      if (docId === acct.key) body.client = acct.name; else body.metaAccountId = acct.key;
+      request('PUT', '/api/bookings/' + encodeURIComponent(docId), body)
+        .then(function () { return request('GET', '/api/bookings'); })
+        .then(function (list) { data.bookings = list; close(); render(); }, function (err) { saveBtn.disabled = false; say('error', 'Could not save: ' + err.message); });
+    });
+    drawRows();
+    panel.appendChild(h('div', { 'class': 'picker__head' }, [h('h3', { 'class': 'card__title', text: acct.name + ' · bookings' }), h('button', { 'class': 'btn', type: 'button', onclick: close }, ['Close'])]));
+    panel.appendChild(h('p', { 'class': 'muted', text: 'Log this client\'s bookings by day. They count for ' + acct.key + ' and show as the first two metric cards (count and cost per one, from the spend of the switched-on campaigns) for the chosen timeframe.' }));
+    panel.appendChild(h('div', { 'class': 'field' }, [h('label', { text: 'Call them' }), labelIn, h('span', { 'class': 'field__hint', text: 'e.g. Bookings, Calls, Appointments. The cost card is named after it.' })]));
+    panel.appendChild(h('div', { 'class': 'picker__list bk__list' }, [h('table', { 'class': 'table bk' }, [h('thead', {}, [h('tr', {}, [h('th', { text: 'Date' }), h('th', { text: 'Count' }), h('th', {})])]), tbody]), emptyRow]));
+    panel.appendChild(h('div', { 'class': 'picker__foot' }, [h('div', { 'class': 'btn-row' }, [addBtn, pasteBtn]), h('div', { 'class': 'bk__total' }, [h('span', { 'class': 'muted', text: 'Total ' }), totalEl]), saveBtn]));
+    panel.appendChild(status);
+    document.body.appendChild(overlay);
+  }
   // Bookings logged in the Ad Accounts tab, grouped by the Meta ad account they are tied to ('' = not linked).
   function bookingsByAccount() {
     var out = {};
@@ -574,10 +647,18 @@
       return h('button', { 'class': 'pill pill--sm' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Hide ' : 'Show ') + t.name + ' (' + (t.adAccountName || t.adAccountId || '') + ')', onclick: function () { setOn(t.id, !on); render(); } },
         [h('span', { 'class': 'pill__dot' }), h('span', { text: t.name })]);
     }));
+    var r0 = currentRange;
+    var bkRow = h('div', { 'class': 'pills' }, accounts.map(function (a) {
+      var o = bk[a.key], inFrame = 0;
+      if (o && r0) ((data && data.bookings) || []).forEach(function (b) { if (b.metaAccountId === a.key) b.entries.forEach(function (e) { if (e.date >= r0.since && e.date <= r0.until) inFrame += e.count || 0; }); });
+      return h('button', { 'class': 'pill pill--sm pill--bk' + (o ? ' is-on' : ''), type: 'button', title: (o ? 'Edit the ' + o.label.toLowerCase() + ' logged for ' : 'Log bookings for ') + a.name, onclick: function () { openBookings(a); } },
+        [h('span', { 'class': 'pill__dot' }), h('span', { text: a.name }), h('span', { 'class': 'pill__count', text: o ? inFrame + ' in view · ' + o.total + ' ' + o.label.toLowerCase() + ' total' : '+ log' })]);
+    }));
     var wrap = h('div', { 'class': 'pillbox' }, [
       h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Clients' }), accRow]),
+      h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Bookings' }), bkRow]),
       live.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Campaigns' }), campRow]) : h('p', { 'class': 'muted', text: 'Switch a client on to see its campaigns.' }),
-      orphans.length ? h('div', { 'class': 'notice notice--warn pillbox__orphans' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: orphans.join('. ') + '. Open the Ad Accounts tab, press Bookings on that row and pick the Meta ad account the tracked campaigns run on' + (accounts.length ? ' (' + accounts.map(function (a) { return a.name + ' ' + a.key; }).join(', ') + ')' : '') + '.' })]) : null
+      orphans.length ? h('div', { 'class': 'notice notice--warn pillbox__orphans' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: orphans.join('. ') + '. Log them here instead: press the client\'s button in the Bookings row above. (Or in the Ad Accounts tab, press Bookings on that row and pick the Meta ad account.)' })]) : null
     ]);
     return wrap;
   }
