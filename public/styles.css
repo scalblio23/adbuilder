@@ -274,6 +274,8 @@ a { color: inherit; text-decoration: none; }
 .notice__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
 .notice--ok .notice__dot { background: var(--success); }
 .notice--error { border-color: var(--danger); color: var(--text); }
+.notice--warn { border-color: #e0a52b; color: var(--text); }
+.notice--warn .notice__dot { background: #e0a52b; }
 .notice--error .notice__dot { background: var(--danger); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -849,6 +851,8 @@ a.adrow__name:hover { color: var(--accent); }
 .pill.is-on .pill__dot { background: var(--con-green, var(--success)); box-shadow: 0 0 8px var(--con-green, var(--success)); }
 .pill__count { font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted); }
 .pill--sm { padding: 4px 12px 4px 9px; font-size: 12px; }
+.pill__bk { font-family: var(--mono, monospace); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--con-green, var(--success)); border-left: 1px solid var(--con-line-strong, var(--border)); padding-left: 8px; }
+.pillbox__orphans { margin-top: 8px; }
 .bc__link, .adrow__link { font-size: 11px; color: #7aa7ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .bc__link:hover, .adrow__link:hover { text-decoration: underline; }
 .bc__link.is-none, .adrow__link.is-none { color: var(--text-muted); }

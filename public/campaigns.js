@@ -402,10 +402,10 @@
     var defs = chosenDefs(resultLabel(tracked));
     if (sr.bookings && sr.bookings.any) {
       var bl = sr.bookings.label, unit = bl.replace(/s$/i, '').toLowerCase();
-      defs = defs.concat([
+      defs = [
         { key: 'bookings', label: bl + ' (logged)', fmt: count, lowerIsBetter: false, color: '#2ee6a6', logged: true },
         { key: 'costPerBooking', label: 'Cost per ' + unit, fmt: money, lowerIsBetter: true, color: '#e0a52b', logged: true }
-      ]);
+      ].concat(defs);
     }
     var grid = h('div', { 'class': 'tiles' }, defs.map(function (def) { return tile(def, c, p, rows); }));
     grid.appendChild(h('button', { 'class': 'tile tile--add', type: 'button', title: 'Choose which metrics to show', onclick: openMetrics }, [h('span', { 'class': 'tile__plus', text: '+' }), h('span', { 'class': 'tile__label', text: defs.filter(function (d) { return !d.logged; }).length + ' / ' + MAX_METRICS + ' metrics' })]));
@@ -543,15 +543,31 @@
   function isOn(id) { var t = ((data && data.tracked) || []).filter(function (x) { return x.id === id; })[0]; return t ? accountOn(t) && campaignOn(id) : campaignOn(id); }
   function setOn(id, on) { setFlag('adbuilder.campaignOn.' + id, on); }
   // Two rows of pills: one per client (ad account), then one per campaign of the clients that are on.
+  // Bookings logged in the Ad Accounts tab, grouped by the Meta ad account they are tied to ('' = not linked).
+  function bookingsByAccount() {
+    var out = {};
+    ((data && data.bookings) || []).forEach(function (b) {
+      if (!b.entries || !b.entries.length) return;
+      var k = b.metaAccountId || '';
+      var o = out[k] = out[k] || { total: 0, label: b.label || 'Bookings', clients: [] };
+      o.total += b.total || 0; o.clients.push(b.client || b.company || 'a client');
+    });
+    return out;
+  }
   function pillRows(tracked) {
-    var accounts = [], seen = {};
+    var accounts = [], seen = {}, bk = bookingsByAccount();
     tracked.forEach(function (t) { var k = accountKey(t); if (!seen[k]) { seen[k] = true; accounts.push({ key: k, name: t.adAccountName || t.adAccountId || 'No account', campaigns: [] }); } seen[k] && accounts.filter(function (a) { return a.key === k; })[0].campaigns.push(t); });
     var accRow = h('div', { 'class': 'pills' }, accounts.map(function (a) {
       var on = flag('adbuilder.accountOn.' + a.key);
       var onCount = a.campaigns.filter(function (t) { return campaignOn(t.id); }).length;
       return h('button', { 'class': 'pill' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Switch off ' : 'Switch on ') + a.name, onclick: function () { setFlag('adbuilder.accountOn.' + a.key, !on); render(); } },
-        [h('span', { 'class': 'pill__dot' }), h('span', { text: a.name }), h('span', { 'class': 'pill__count', text: onCount + '/' + a.campaigns.length })]);
+        [h('span', { 'class': 'pill__dot' }), h('span', { text: a.name }), h('span', { 'class': 'pill__count', text: onCount + '/' + a.campaigns.length }), bk[a.key] ? h('span', { 'class': 'pill__bk', text: bk[a.key].total + ' ' + bk[a.key].label.toLowerCase() }) : null]);
     }));
+    // Bookings logged for a client whose Meta ad account has no tracked campaigns (or none chosen) can't show up above.
+    var orphans = Object.keys(bk).filter(function (k) { return !seen[k]; }).map(function (k) {
+      var o = bk[k];
+      return o.clients.join(', ') + ': ' + o.total + ' ' + o.label.toLowerCase() + ' logged ' + (k ? 'against ' + k + ', which has no tracked campaigns here' : 'but not linked to a Meta ad account');
+    });
     var live = tracked.filter(accountOn);
     var campRow = h('div', { 'class': 'pills pills--campaigns' }, live.map(function (t) {
       var on = campaignOn(t.id);
@@ -560,7 +576,8 @@
     }));
     var wrap = h('div', { 'class': 'pillbox' }, [
       h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Clients' }), accRow]),
-      live.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Campaigns' }), campRow]) : h('p', { 'class': 'muted', text: 'Switch a client on to see its campaigns.' })
+      live.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Campaigns' }), campRow]) : h('p', { 'class': 'muted', text: 'Switch a client on to see its campaigns.' }),
+      orphans.length ? h('div', { 'class': 'notice notice--warn pillbox__orphans' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: orphans.join('. ') + '. Open the Ad Accounts tab, press Bookings on that row and pick the Meta ad account the tracked campaigns run on' + (accounts.length ? ' (' + accounts.map(function (a) { return a.name + ' ' + a.key; }).join(', ') + ')' : '') + '.' })]) : null
     ]);
     return wrap;
   }
