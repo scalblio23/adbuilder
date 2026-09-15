@@ -133,9 +133,15 @@ stored the moment it lands. A run stops starting new campaigns after `REFRESH_BU
 then calls Refresh again automatically until everything is current. The cron does one run per
 firing, so with very many campaigns the stalest-first order spreads them across firings.
 
-**Bookings logged per client.** The Campaigns tab has a Bookings row under the client pills: one
-button per client (Meta ad account) opens a log of dates and counts, named as you like (Bookings,
-Calls, …), stored as `bookings/act_<id>`. The Ad Accounts tab has the same log per row, tied to
+**Clients, ad accounts, campaigns.** The pills on the Campaigns tab go client → ad account →
+campaign. A campaign's client defaults to its ad account's name; the Client dropdown on a campaign
+card attributes it to another client (or a new one, `PUT /api/tracked/:id { client }`), so campaigns
+from several ad accounts can share one client pill and one shared account can be split between
+clients. Meta still pulls by campaign id, so moving a campaign changes only grouping.
+
+**Bookings logged per client.** The Bookings row on the Campaigns tab has one button per client
+that opens a log of dates and counts, named as you like (Bookings, Calls, …), stored as
+`bookings/c-<client slug>`. Older logs keyed by ad account count for that account's default client. The Ad Accounts tab has the same log per row, tied to
 the Meta ad account the client runs on (prefilled from an `act=` link), stored as
 `bookings/<row id>` (`GET /api/bookings`, `PUT /api/bookings/:id { metaAccountId, label,
 entries: [{ date, count }] }`). On the Campaigns tab, when a client pill is

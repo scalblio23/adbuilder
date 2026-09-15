@@ -178,10 +178,10 @@
   // Totals for a set of daily rows over the current timeframe, aligned per date for the charts.
   // Bookings logged by hand (Ad Accounts tab) for the clients whose campaigns are switched on: { byDate, label }.
   function bookingsFor(tracked) {
-    var onAccts = {}; tracked.forEach(function (t) { onAccts[accountKey(t)] = true; });
+    var onClients = {}; tracked.forEach(function (t) { onClients[clientKeyOf(t)] = true; });
     var byDate = {}, labels = {}, any = false;
     ((data && data.bookings) || []).forEach(function (b) {
-      if (!b.metaAccountId || !onAccts[b.metaAccountId] || !b.entries.length) return;
+      if (!b.clientKey || !onClients[b.clientKey] || !b.entries.length) return;
       any = true; labels[b.label || 'Bookings'] = true;
       b.entries.forEach(function (e) { byDate[e.date] = (byDate[e.date] || 0) + (e.count || 0); });
     });
@@ -555,14 +555,21 @@
   function flag(key) { try { return localStorage.getItem(key) !== '0'; } catch (e) { return true; } }
   function setFlag(key, on) { try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {} }
   function accountKey(t) { return t.adAccountId || 'none'; }
-  function accountOn(t) { return flag('adbuilder.accountOn.' + accountKey(t)); }
+  // A client is the label a campaign is attributed to (default: its ad account's name); campaigns from
+  // different ad accounts can share one. The slug is the key its bookings are stored under.
+  function clientOf(t) { return t.client || t.adAccountName || t.adAccountId || 'No client'; }
+  function slug(name) { return 'c-' + (String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'client'); }
+  function clientKeyOf(t) { return slug(clientOf(t)); }
+  function clientOn(key) { return flag('adbuilder.clientOn.' + key); }
+  function accountOn(t) { return clientOn(clientKeyOf(t)) && flag('adbuilder.accountOn.' + accountKey(t)); }
   function campaignOn(id) { return flag('adbuilder.campaignOn.' + id); }
   function isOn(id) { var t = ((data && data.tracked) || []).filter(function (x) { return x.id === id; })[0]; return t ? accountOn(t) && campaignOn(id) : campaignOn(id); }
+  function clientNames() { var seen = {}, out = []; ((data && data.tracked) || []).forEach(function (t) { var n = clientOf(t); if (!seen[n]) { seen[n] = true; out.push(n); } }); return out.sort(); }
   function setOn(id, on) { setFlag('adbuilder.campaignOn.' + id, on); }
   // Two rows of pills: one per client (ad account), then one per campaign of the clients that are on.
   // ---- bookings log, per client, on this tab: dates and counts tied to the client's Meta ad account ----
-  function bookingDocFor(acctKey) {
-    return ((data && data.bookings) || []).filter(function (b) { return b.metaAccountId === acctKey; }).sort(function (a, b) { return (b.entries.length - a.entries.length); })[0] || null;
+  function bookingDocFor(clientKey) {
+    return ((data && data.bookings) || []).filter(function (b) { return b.clientKey === clientKey; }).sort(function (a, b) { return (b.entries.length - a.entries.length); })[0] || null;
   }
   function openBookings(acct) {
     var existing = bookingDocFor(acct.key);
@@ -619,14 +626,14 @@
       if (entries.some(function (e) { return !/^\d{4}-\d{2}-\d{2}$/.test(e.date || ''); })) return say('error', 'Every row needs a date.');
       saveBtn.disabled = true; say('', 'Saving…');
       var body = { label: labelIn.value.trim() || 'Bookings', entries: entries.map(function (e) { return { date: e.date, count: Number(e.count) || 0 }; }) };
-      if (docId === acct.key) body.client = acct.name; else body.metaAccountId = acct.key;
+      body.client = acct.name;
       request('PUT', '/api/bookings/' + encodeURIComponent(docId), body)
         .then(function () { return request('GET', '/api/bookings'); })
         .then(function (list) { data.bookings = list; close(); render(); }, function (err) { saveBtn.disabled = false; say('error', 'Could not save: ' + err.message); });
     });
     drawRows();
     panel.appendChild(h('div', { 'class': 'picker__head' }, [h('h3', { 'class': 'card__title', text: acct.name + ' · bookings' }), h('button', { 'class': 'btn', type: 'button', onclick: close }, ['Close'])]));
-    panel.appendChild(h('p', { 'class': 'muted', text: 'Log this client\'s bookings by day. They count for ' + acct.key + ' and show as the first two metric cards (count and cost per one, from the spend of the switched-on campaigns) for the chosen timeframe.' }));
+    panel.appendChild(h('p', { 'class': 'muted', text: 'Log this client\'s bookings by day. They show as the first two metric cards (count and cost per one, from the spend of the switched-on campaigns) for the chosen timeframe.' }));
     panel.appendChild(h('div', { 'class': 'field' }, [h('label', { text: 'Call them' }), labelIn, h('span', { 'class': 'field__hint', text: 'e.g. Bookings, Calls, Appointments. The cost card is named after it.' })]));
     panel.appendChild(h('div', { 'class': 'picker__list bk__list' }, [h('table', { 'class': 'table bk' }, [h('thead', {}, [h('tr', {}, [h('th', { text: 'Date' }), h('th', { text: 'Count' }), h('th', {})])]), tbody]), emptyRow]));
     panel.appendChild(h('div', { 'class': 'picker__foot' }, [h('div', { 'class': 'btn-row' }, [addBtn, pasteBtn]), h('div', { 'class': 'bk__total' }, [h('span', { 'class': 'muted', text: 'Total ' }), totalEl]), saveBtn]));
@@ -634,48 +641,66 @@
     document.body.appendChild(overlay);
   }
   // Bookings logged in the Ad Accounts tab, grouped by the Meta ad account they are tied to ('' = not linked).
-  function bookingsByAccount() {
+  function bookingsByClient() {
     var out = {};
     ((data && data.bookings) || []).forEach(function (b) {
       if (!b.entries || !b.entries.length) return;
-      var k = b.metaAccountId || '';
+      var k = b.clientKey || '';
       var o = out[k] = out[k] || { total: 0, label: b.label || 'Bookings', clients: [] };
       o.total += b.total || 0; o.clients.push(b.client || b.company || 'a client');
     });
     return out;
   }
   function pillRows(tracked) {
-    var accounts = [], seen = {}, bk = bookingsByAccount();
-    tracked.forEach(function (t) { var k = accountKey(t); if (!seen[k]) { seen[k] = true; accounts.push({ key: k, name: t.adAccountName || t.adAccountId || 'No account', campaigns: [] }); } seen[k] && accounts.filter(function (a) { return a.key === k; })[0].campaigns.push(t); });
-    var accRow = h('div', { 'class': 'pills' }, accounts.map(function (a) {
-      var on = flag('adbuilder.accountOn.' + a.key);
-      var onCount = a.campaigns.filter(function (t) { return campaignOn(t.id); }).length;
-      return h('button', { 'class': 'pill' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Switch off ' : 'Switch on ') + a.name, onclick: function () { setFlag('adbuilder.accountOn.' + a.key, !on); render(); } },
-        [h('span', { 'class': 'pill__dot' }), h('span', { text: a.name }), h('span', { 'class': 'pill__count', text: onCount + '/' + a.campaigns.length }), bk[a.key] ? h('span', { 'class': 'pill__bk', text: bk[a.key].total + ' ' + bk[a.key].label.toLowerCase() }) : null]);
-    }));
-    // Bookings logged for a client whose Meta ad account has no tracked campaigns (or none chosen) can't show up above.
-    var orphans = Object.keys(bk).filter(function (k) { return !seen[k]; }).map(function (k) {
-      var o = bk[k];
-      return o.clients.join(', ') + ': ' + o.total + ' ' + o.label.toLowerCase() + ' logged ' + (k ? 'against ' + k + ', which has no tracked campaigns here' : 'but not linked to a Meta ad account');
+    var bk = bookingsByClient(), r0 = currentRange;
+    // Clients (top) -> their ad accounts -> campaigns. A campaign's client defaults to its ad account.
+    var clients = [], byKey = {};
+    tracked.forEach(function (t) {
+      var k = clientKeyOf(t);
+      var c = byKey[k]; if (!c) { c = byKey[k] = { key: k, name: clientOf(t), campaigns: [], accounts: [], acctSeen: {} }; clients.push(c); }
+      c.campaigns.push(t);
+      var ak = accountKey(t); if (!c.acctSeen[ak]) { c.acctSeen[ak] = true; c.accounts.push({ key: ak, name: t.adAccountName || t.adAccountId || 'No account', campaigns: [] }); }
+      c.accounts.filter(function (a) { return a.key === ak; })[0].campaigns.push(t);
     });
+    clients.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var clientRow = h('div', { 'class': 'pills' }, clients.map(function (c) {
+      var on = clientOn(c.key);
+      var onCount = c.campaigns.filter(function (t) { return isOn(t.id); }).length;
+      return h('button', { 'class': 'pill' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Switch off ' : 'Switch on ') + c.name + (c.accounts.length > 1 ? ' (' + c.accounts.length + ' ad accounts)' : ''), onclick: function () { setFlag('adbuilder.clientOn.' + c.key, !on); render(); } },
+        [h('span', { 'class': 'pill__dot' }), h('span', { text: c.name }), h('span', { 'class': 'pill__count', text: onCount + '/' + c.campaigns.length }), bk[c.key] ? h('span', { 'class': 'pill__bk', text: bk[c.key].total + ' ' + bk[c.key].label.toLowerCase() }) : null]);
+    }));
+    var liveClients = clients.filter(function (c) { return clientOn(c.key); });
+    var acctRow = h('div', { 'class': 'pills' }, [].concat.apply([], liveClients.map(function (c) {
+      return c.accounts.map(function (a) {
+        var on = flag('adbuilder.accountOn.' + a.key);
+        var onCount = a.campaigns.filter(function (t) { return campaignOn(t.id); }).length;
+        return h('button', { 'class': 'pill pill--sm' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Switch off ' : 'Switch on ') + a.name + ' · ' + a.key + ' (client ' + c.name + ')', onclick: function () { setFlag('adbuilder.accountOn.' + a.key, !on); render(); } },
+          [h('span', { 'class': 'pill__dot' }), h('span', { text: (liveClients.length > 1 && c.name !== a.name ? c.name + ' · ' : '') + a.name }), h('span', { 'class': 'pill__count', text: onCount + '/' + a.campaigns.length })]);
+      });
+    })));
     var live = tracked.filter(accountOn);
     var campRow = h('div', { 'class': 'pills pills--campaigns' }, live.map(function (t) {
       var on = campaignOn(t.id);
-      return h('button', { 'class': 'pill pill--sm' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Hide ' : 'Show ') + t.name + ' (' + (t.adAccountName || t.adAccountId || '') + ')', onclick: function () { setOn(t.id, !on); render(); } },
+      return h('button', { 'class': 'pill pill--sm' + (on ? ' is-on' : ''), type: 'button', title: (on ? 'Hide ' : 'Show ') + t.name + ' (' + clientOf(t) + ' · ' + (t.adAccountName || t.adAccountId || '') + ')', onclick: function () { setOn(t.id, !on); render(); } },
         [h('span', { 'class': 'pill__dot' }), h('span', { text: t.name })]);
     }));
-    var r0 = currentRange;
-    var bkRow = h('div', { 'class': 'pills' }, accounts.map(function (a) {
-      var o = bk[a.key], inFrame = 0;
-      if (o && r0) ((data && data.bookings) || []).forEach(function (b) { if (b.metaAccountId === a.key) b.entries.forEach(function (e) { if (e.date >= r0.since && e.date <= r0.until) inFrame += e.count || 0; }); });
-      return h('button', { 'class': 'pill pill--sm pill--bk' + (o ? ' is-on' : ''), type: 'button', title: (o ? 'Edit the ' + o.label.toLowerCase() + ' logged for ' : 'Log bookings for ') + a.name, onclick: function () { openBookings(a); } },
-        [h('span', { 'class': 'pill__dot' }), h('span', { text: a.name }), h('span', { 'class': 'pill__count', text: o ? inFrame + ' in view · ' + o.total + ' ' + o.label.toLowerCase() + ' total' : '+ log' })]);
+    var bkRow = h('div', { 'class': 'pills' }, clients.map(function (c) {
+      var o = bk[c.key], inFrame = 0;
+      if (o && r0) ((data && data.bookings) || []).forEach(function (b) { if (b.clientKey === c.key) b.entries.forEach(function (e) { if (e.date >= r0.since && e.date <= r0.until) inFrame += e.count || 0; }); });
+      return h('button', { 'class': 'pill pill--sm pill--bk' + (o ? ' is-on' : ''), type: 'button', title: (o ? 'Edit the ' + o.label.toLowerCase() + ' logged for ' : 'Log bookings for ') + c.name, onclick: function () { openBookings(c); } },
+        [h('span', { 'class': 'pill__dot' }), h('span', { text: c.name }), h('span', { 'class': 'pill__count', text: o ? inFrame + ' in view · ' + o.total + ' ' + o.label.toLowerCase() + ' total' : '+ log' })]);
     }));
+    // Bookings logged for a client that has no tracked campaigns can't count anywhere.
+    var orphans = Object.keys(bk).filter(function (k) { return !byKey[k]; }).map(function (k) {
+      var o = bk[k];
+      return o.clients.join(', ') + ': ' + o.total + ' ' + o.label.toLowerCase() + ' logged ' + (k ? 'for a client with no tracked campaigns (' + k + ')' : 'but not linked to any client');
+    });
     var wrap = h('div', { 'class': 'pillbox' }, [
-      h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Clients' }), accRow]),
+      h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Clients' }), clientRow]),
+      liveClients.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Ad accounts' }), acctRow]) : h('p', { 'class': 'muted', text: 'Switch a client on to see its ad accounts and campaigns.' }),
+      live.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Campaigns' }), campRow]) : null,
       h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Bookings' }), bkRow]),
-      live.length ? h('div', { 'class': 'pillbox__row' }, [h('span', { 'class': 'mono pillbox__label', text: 'Campaigns' }), campRow]) : h('p', { 'class': 'muted', text: 'Switch a client on to see its campaigns.' }),
-      orphans.length ? h('div', { 'class': 'notice notice--warn pillbox__orphans' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: orphans.join('. ') + '. Log them here instead: press the client\'s button in the Bookings row above. (Or in the Ad Accounts tab, press Bookings on that row and pick the Meta ad account.)' })]) : null
+      orphans.length ? h('div', { 'class': 'notice notice--warn pillbox__orphans' }, [h('span', { 'class': 'notice__dot' }), h('span', { text: orphans.join('. ') + '. Move a campaign to that client (the Client dropdown on a campaign card), or log them under one of the clients above.' })]) : null
     ]);
     return wrap;
   }
@@ -693,6 +718,20 @@
     var autoText = 'Auto: ' + ((st && st.resultType) || 'Results') + (optText ? ' (' + optText + ')' : '');
     var keys = Object.keys(totals).sort(function (a, b) { return (totals[b] || 0) - (totals[a] || 0) || a.localeCompare(b); });
     var resultSel = h('select', { 'class': 'crow__result', title: 'What counts as a result for this campaign' }, [h('option', { value: '', text: autoText })].concat(keys.map(function (k) { return h('option', { value: k, text: labelFor(k, allConvLabels()) + (k === 'reach' ? '' : ' · ' + count(totals[k]) + ' in stored days') }); })));
+    // Client: which pill this campaign counts under (default: its ad account). Campaigns from other ad accounts can share it.
+    var acctName = t.adAccountName || t.adAccountId || 'No client';
+    var clientSel = h('select', { 'class': 'crow__result', title: 'Which client this campaign is attributed to' },
+      [h('option', { value: '', text: 'Same as ad account (' + acctName + ')' })]
+        .concat(clientNames().filter(function (n) { return n !== acctName; }).map(function (n) { return h('option', { value: n, text: n }); }))
+        .concat([h('option', { value: '__new', text: 'New client…' })]));
+    clientSel.value = t.client && t.client !== acctName ? t.client : '';
+    clientSel.addEventListener('change', function () {
+      var v = clientSel.value;
+      if (v === '__new') { v = (prompt('Name of the client to attribute "' + t.name + '" to:') || '').trim(); if (!v) { clientSel.value = t.client || ''; return; } }
+      if (v === acctName) v = '';
+      clientSel.disabled = true;
+      request('PUT', '/api/tracked/' + t.id, { client: v }).then(function (o) { setFlag('adbuilder.clientOn.' + slug(v || acctName), true); return request('GET', '/api/bookings').then(function (list) { o.bookings = list; apply(o); }); }, function (err) { clientSel.disabled = false; setNotice('error', err.message); });
+    });
     resultSel.value = t.resultOverride || '';
     resultSel.addEventListener('change', function () {
       var chosen = resultSel.value;
@@ -728,6 +767,7 @@
           h('div', { 'class': 'crow__name', text: t.name }),
           h('div', { 'class': 'crow__meta' }, [statusBadge(t.status), h('span', { text: (t.adAccountName || t.adAccountId || '') }), h('span', { 'class': 'crow__cid', text: 'ID ' + t.id })]),
           h('div', { 'class': 'crow__actions' }, [toggle, resultSel]),
+          h('div', { 'class': 'crow__actions' }, [h('span', { 'class': 'crow__label', text: 'Client' }), clientSel]),
           h('div', { 'class': 'crow__label', text: st ? 'Synced ' + ago(st.syncedAt) : 'No data yet' }),
           st ? metaSays(t) : null
         ]),
@@ -911,7 +951,7 @@
           });
           onItems.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
             var t = tracked[c.id], on = isOn(t.id);
-            var sw = h('button', { 'class': 'btn btn--small', type: 'button', text: on ? 'Showing' : 'Switch on', disabled: on, onclick: function () { setFlag('adbuilder.accountOn.' + accountKey(t), true); setOn(t.id, true); render(); drawList(); } });
+            var sw = h('button', { 'class': 'btn btn--small', type: 'button', text: on ? 'Showing' : 'Switch on', disabled: on, onclick: function () { setFlag('adbuilder.clientOn.' + clientKeyOf(t), true); setFlag('adbuilder.accountOn.' + accountKey(t), true); setOn(t.id, true); render(); drawList(); } });
             list.appendChild(h('div', { 'class': 'picker__item picker__item--onboard' }, [h('span', { 'class': 'picker__tick', text: '✓' }),
               h('div', { 'class': 'picker__text' }, [h('strong', { text: c.name }), h('span', { text: 'ID ' + c.id + (c.status ? ' · ' + c.status : '') + ' · already on the dashboard · ' + (on ? 'switched on' : 'switched off (not shown until you switch it on)') + (t.stats ? '' : ' · no numbers yet: press Refresh') })]),
               sw]));
